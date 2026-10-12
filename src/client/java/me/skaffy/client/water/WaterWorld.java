@@ -29,12 +29,17 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
@@ -49,7 +54,14 @@ import org.lwjgl.vulkan.VkCommandBuffer;
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
 	static final int UBO_SLOT = 4096;
-	static final int UBO_SIZE = 3904;
+	static final int UBO_SIZE = 3920;
+	static final float PARTICLES_PER_CELL = 8.0F;
+	static final float SAND_POISSON = 0.3F;
+
+	static float sandWaveSpeed() {
+		float nu = SAND_POISSON;
+		return (float) Math.sqrt(WaterSettings.sandStiffness * (1.0F - nu) / ((1.0F + nu) * (1.0F - 2.0F * nu)));
+	}
 	private static final double WORLD_WRAP = 4096.0;
 	static final int MAX_ENTITIES = 32;
 	static final int MAX_SOURCES = 64;
@@ -118,6 +130,9 @@ public final class WaterWorld {
 	private float smoothedFrameMs;
 	private boolean localPlayerFirst;
 	private int builtResolution = WaterSettings.resolution;
+	private int builtSandResolution = WaterSettings.sandResolution;
+	private int lastSandSteps;
+	private float lastSandDt;
 
 	public static WaterWorld get() {
 		return INSTANCE;
@@ -146,7 +161,7 @@ public final class WaterWorld {
 	}
 
 	private SolidCache solids(Material material) {
-		return this.solids(material, Math.max(1, WaterSettings.resolution));
+		return this.solids(material, resolutionFor(material));
 	}
 
 	private SolidCache solids(Material material, int res) {
@@ -162,6 +177,10 @@ public final class WaterWorld {
 		return this.solids;
 	}
 
+	static int resolutionFor(Material material) {
+		return Math.max(1, material == Material.SAND ? WaterSettings.sandResolution : WaterSettings.resolution);
+	}
+
 	private static boolean isHost() {
 		return Minecraft.getInstance().getSingleplayerServer() != null;
 	}
@@ -169,7 +188,7 @@ public final class WaterWorld {
 
 	private @Nullable WaterRegion regionNear(BlockPos pos, int margin, Material material) {
 		for (WaterRegion r : this.regions) {
-			if (r.material == material && r.res == WaterSettings.resolution && r.claims(pos, margin)) {
+			if (r.material == material && r.res == resolutionFor(material) && r.claims(pos, margin)) {
 				return r;
 			}
 		}
@@ -179,7 +198,7 @@ public final class WaterWorld {
 	private WaterRegion regionFor(BlockPos pos, Material material) {
 		WaterRegion r = this.regionNear(pos, JOIN_DISTANCE, material);
 		if (r == null) {
-			r = new WaterRegion(this.nextRegionId++, Math.max(1, WaterSettings.resolution), material);
+			r = new WaterRegion(this.nextRegionId++, resolutionFor(material), material);
 			this.regions.add(r);
 		}
 		return r;
@@ -409,8 +428,9 @@ public final class WaterWorld {
 		if (level == null) {
 			return;
 		}
-		if (WaterSettings.resolution != this.builtResolution) {
+		if (WaterSettings.resolution != this.builtResolution || WaterSettings.sandResolution != this.builtSandResolution) {
 			this.builtResolution = WaterSettings.resolution;
+			this.builtSandResolution = WaterSettings.sandResolution;
 			this.reload(level);
 		}
 		for (int i = 0; i < 4 && !this.chunkScanQueue.isEmpty(); i++) {
@@ -599,6 +619,7 @@ public final class WaterWorld {
 		List<WaterRegion> merged = new ArrayList<>();
 		List<WaterRegion> drained = new ArrayList<>();
 		float fastest = 0.0F;
+		float fastestSand = 0.0F;
 		for (WaterRegion r : this.regions) {
 			WaterRegion.Fill fill = r.readBack();
 			if (fill != null) {
@@ -619,7 +640,11 @@ public final class WaterWorld {
 				continue;
 			}
 			active.add(r);
-			fastest = Math.max(fastest, r.lastMaxSpeed / r.res);
+			if (r.material == Material.SAND) {
+				fastestSand = Math.max(fastestSand, r.lastMaxSpeed / r.res);
+			} else {
+				fastest = Math.max(fastest, r.lastMaxSpeed / r.res);
+			}
 		}
 
 		for (int i = 0; i < active.size(); i++) {
@@ -647,8 +672,19 @@ public final class WaterWorld {
 			steps = Mth.clamp(wanted, 1, clipDt != null ? WaterSettings.renderMaxStepsPerFrame : WaterSettings.maxStepsPerFrame);
 			stepDt = Math.min(frameDt / steps, WaterSettings.maxDt);
 		}
+		int sandSteps = 0;
+		float sandDt = frameDt;
+		if (!this.paused && !mc.isPaused()) {
+			int sandRes = resolutionFor(Material.SAND);
+			float limit = Math.min(WaterSettings.sandCfl / (sandRes * sandWaveSpeed()), 1.0F / (sandRes * Math.max(fastestSand, 1e-3F)));
+			int wanted = (int) Math.ceil(frameDt / limit);
+			sandSteps = Mth.clamp(wanted, 1, clipDt != null ? Integer.MAX_VALUE : Math.max(1, WaterSettings.sandMaxStepsPerFrame));
+			sandDt = Math.min(frameDt / sandSteps, limit);
+		}
 		this.lastSteps = steps;
 		this.lastDt = stepDt;
+		this.lastSandSteps = sandSteps;
+		this.lastSandDt = sandDt;
 		this.simTime += steps * stepDt;
 
 		RenderTarget main = mc.gameRenderer.mainRenderTarget();
@@ -687,14 +723,19 @@ public final class WaterWorld {
 		for (int i = 0; i < active.size(); i++) {
 			WaterRegion r = active.get(i);
 			r.planWindow(level, this.solids(r.material, r.res), r.boxWorld);
+			boolean sand = r.material == Material.SAND;
+			if (sand && entityNear(level, r)) {
+				r.wake(this.frameCounter);
+			}
+			int regionSteps = !sand ? steps : r.dormant() ? 0 : sandSteps;
 			if (readFill && r.initialized() && (this.frameCounter + r.id) % SYNC_INTERVAL == 0) {
 				r.fillRequested = true;
 			}
 			int slot = Vk.ringSlot() * MAX_REGIONS + i;
 			List<float[]> removals = r.takeRemovals();
-			int numSources = this.writeGlobals(mc, level, r, slot, stepDt, width, height, removals);
+			int numSources = this.writeGlobals(mc, level, r, slot, sand ? sandDt : stepDt, width, height, removals);
 			Desc ubo = Desc.ubo(this.uboRing, (long) slot * UBO_SLOT, UBO_SIZE);
-			r.record(cb, ubo, steps, numSources, this.frameCounter, this.frameView, removals.size());
+			r.record(cb, ubo, regionSteps, numSources, this.frameCounter, this.frameView, removals.size());
 			(r.material == Material.SAND ? sandBodies : waterBodies).add(new WaterRenderer.Body(r, ubo));
 		}
 		Vk.barrier(cb);
@@ -733,6 +774,16 @@ public final class WaterWorld {
 		}
 	}
 
+	private static boolean entityNear(ClientLevel level, WaterRegion r) {
+		int[] b = r.boxWorld;
+		if (b == null) {
+			return false;
+		}
+		double h = 1.0 / r.res;
+		AABB box = new AABB(b[0] * h, b[1] * h, b[2] * h, b[3] * h, b[4] * h, b[5] * h).inflate(0.5);
+		return !level.getEntities((Entity) null, box, e -> !e.isSpectator()).isEmpty() || !movingPistons(level, box.inflate(1.0)).isEmpty();
+	}
+
 	private static boolean overlaps(int[] a, int[] b) {
 		return a[0] < b[3] && b[0] < a[3] && a[1] < b[4] && b[1] < a[4] && a[2] < b[5] && b[2] < a[5];
 	}
@@ -755,8 +806,8 @@ public final class WaterWorld {
 		int sourceCount = sand ? 0 : this.writeSources(r, b, o + 2112);
 		putInts(b, o + 48, !sand && WaterSettings.whitewater ? 1 : 0, sourceCount, !sand && this.localPlayerFirst ? 1 : 0, WaterSettings.wwCellLimit);
 		putFloats(b, o + 64, 0.0F, -WaterSettings.gravity * res, 0.0F, dt);
-		float flip = (float) Math.pow(sand ? WaterSettings.sandFlipRatio : WaterSettings.flipRatio, dt * 60.0F);
-		putFloats(b, o + 80, flip, 8.0F, sand ? WaterSettings.sandVolumeCorrection : WaterSettings.volumeCorrection, 0.0F);
+		float flip = (float) Math.pow(WaterSettings.flipRatio, dt * 60.0F);
+		putFloats(b, o + 80, flip, PARTICLES_PER_CELL, WaterSettings.volumeCorrection, 0.0F);
 		putFloats(b, o + 96, WaterSettings.maxSpeed * res, h, this.simTime, 0.0F);
 		putFloats(b, o + 112, WaterSettings.wwTrappedAirRate, WaterSettings.wwWaveCrestRate, WaterSettings.wwEnergyMin, WaterSettings.wwEnergyMax);
 		putFloats(b, o + 128, WaterSettings.wwTrappedAirMin, WaterSettings.wwTrappedAirMax, WaterSettings.wwWaveCrestMin, WaterSettings.wwWaveCrestMax);
@@ -813,16 +864,25 @@ public final class WaterWorld {
 		putFloats(b, o + 3808, WaterSettings.detailStrength, WaterSettings.detailScale, WaterSettings.detailSpeed, WaterSettings.roughness);
 		putFloats(b, o + 3824, WaterSettings.specular, WaterSettings.wetDarkening, WaterSettings.filmShading, WaterSettings.foamBubbleSize);
 
-		float cohesion = WaterSettings.sandCohesion * res * WaterSettings.gravity * res * dt;
-		putFloats(b, o + 3840, r.material.shaderId(), WaterSettings.sandFriction, cohesion, sand ? WaterSettings.sandMinCellCount : 1);
 		if (sand) {
-			float rest = Math.min(WaterSettings.sandRestSpeed * res, 0.5F * WaterSettings.gravity * res * dt);
-			putFloats(b, o + 3856, rest, WaterSettings.sandStiffness, Math.max(1, WaterSettings.sandGrainsPerParticle), WaterSettings.sandGrainSize);
+			double phi = Math.toRadians(WaterSettings.sandFrictionAngle);
+			float alpha = (float) (Math.sqrt(2.0 / 3.0) * 2.0 * Math.sin(phi) / (3.0 - Math.sin(phi)));
+			float e = PARTICLES_PER_CELL * WaterSettings.sandStiffness * res * res;
+			float mu = e / (2.0F * (1.0F + SAND_POISSON));
+			float lambda = e * SAND_POISSON / ((1.0F + SAND_POISSON) * (1.0F - 2.0F * SAND_POISSON));
+			putFloats(b, o + 3840, r.material.shaderId(), alpha, WaterSettings.sandCohesion, 1.0F);
+			putFloats(b, o + 3856, mu, lambda, Math.max(1, WaterSettings.sandGrainsPerParticle), WaterSettings.sandGrainSize);
+			float impactViscosity = WaterSettings.sandImpactDamping * 0.25F / Math.max(dt, 1e-5F);
+			putFloats(b, o + 3872, WaterSettings.sandWallFriction, 1.0F / PARTICLES_PER_CELL, impactViscosity, WaterSettings.sandImpactRate);
 		} else {
+			putFloats(b, o + 3840, r.material.shaderId(), 0.0F, 0.0F, 1.0F);
 			putFloats(b, o + 3856, WaterSettings.filmFriction, WaterSettings.strandedTime, WaterSettings.strandedNeighbors, WaterSettings.filmDepth * res);
+			putFloats(b, o + 3872, 0.0F, 0.0F, 0.0F, 0.0F);
 		}
-		putFloats(b, o + 3872, WaterSettings.sandColorR, WaterSettings.sandColorG, WaterSettings.sandColorB, WaterSettings.sandColorVariation);
-		putFloats(b, o + 3888, WaterSettings.sandGrainMinPixels, WaterSettings.sandAo, WaterSettings.sandGrainSpread, 0.0F);
+		putFloats(b, o + 3888, WaterSettings.sandGrainMinPixels, WaterSettings.sandBrightness, WaterSettings.sandGrainSpread, 0.0F);
+		float impactLogJ = (float) Math.log(Math.max(1.0F - WaterSettings.sandImpactCompression, 0.01F));
+		putFloats(b, o + 3904, WaterSettings.sandRestSpeed * res, WaterSettings.sandRestTime, WaterSettings.sandWakeAccel * WaterSettings.gravity * res * dt,
+			impactLogJ);
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;
 	}
@@ -869,7 +929,39 @@ public final class WaterWorld {
 			putFloats(b, base + 32, (float) (e.getX() - e.xo) * 20.0F * res, (float) (e.getY() - e.yo) * 20.0F * res, (float) (e.getZ() - e.zo) * 20.0F * res, 0.0F);
 			n++;
 		}
+		for (PistonMovingBlockEntity piston : movingPistons(mc.level, window)) {
+			if (n >= MAX_ENTITIES) {
+				break;
+			}
+			BlockPos p = piston.getBlockPos();
+			AABB box = new AABB(p).move(piston.getXOff(partialTick), piston.getYOff(partialTick), piston.getZOff(partialTick));
+			Direction d = piston.getMovementDirection();
+			float speed = piston.getProgress(partialTick) < 1.0F ? 10.0F * res : 0.0F;
+			int base = o + n * 48;
+			putFloats(b, base, (float) (box.minX - r.ox) * res, (float) (box.minY - r.oy) * res, (float) (box.minZ - r.oz) * res, 0.0F);
+			putFloats(b, base + 16, (float) (box.maxX - r.ox) * res, (float) (box.maxY - r.oy) * res, (float) (box.maxZ - r.oz) * res, 0.0F);
+			putFloats(b, base + 32, d.getStepX() * speed, d.getStepY() * speed, d.getStepZ() * speed, 0.0F);
+			n++;
+		}
 		return n;
+	}
+
+	private static List<PistonMovingBlockEntity> movingPistons(ClientLevel level, AABB area) {
+		List<PistonMovingBlockEntity> out = new ArrayList<>();
+		for (int cx = SectionPos.blockToSectionCoord(area.minX); cx <= SectionPos.blockToSectionCoord(area.maxX); cx++) {
+			for (int cz = SectionPos.blockToSectionCoord(area.minZ); cz <= SectionPos.blockToSectionCoord(area.maxZ); cz++) {
+				LevelChunk chunk = level.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+				if (chunk == null) {
+					continue;
+				}
+				for (BlockEntity be : chunk.getBlockEntities().values()) {
+					if (be instanceof PistonMovingBlockEntity piston && area.contains(Vec3.atCenterOf(piston.getBlockPos()))) {
+						out.add(piston);
+					}
+				}
+			}
+		}
+		return out;
 	}
 
 	private static void putInts(ByteBuffer b, int o, int x, int y, int z, int w) {
@@ -906,10 +998,10 @@ public final class WaterWorld {
 			}
 			windowCells += r.numCells;
 		}
-		return String.format("%d water bodies  fluid %,d  whitewater %,d  |  %d sand bodies  grains %,d  |  active %,d cells of %,d allocated  |  "
-				+ "frame %.1f ms  steps %d x %.1f ms  sources %d  %s",
-			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, this.sources.size(),
-			isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)");
+		return String.format("%d water bodies  fluid %,d  whitewater %,d  |  %d sand bodies  sand particles %,d  |  active %,d cells of %,d allocated  |  "
+				+ "frame %.1f ms  water steps %d x %.1f ms  sand steps %d x %.2f ms  sources %d  %s",
+			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, this.lastSandSteps,
+			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)");
 	}
 
 	public void clear() {

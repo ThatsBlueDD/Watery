@@ -87,29 +87,32 @@ public final class WaterSettings {
 	public static boolean flowSounds = true;
 	public static float flowSoundVolume = 1.0F;
 
-	public static float sandFriction = 0.7F;
-	public static float sandCohesion = 0.15F;
-	public static int sandFrictionIterations = 8;
-	public static float sandStiffness = 0.12F;
-	public static float sandFlipRatio = 0.95F;
-	public static float sandVolumeCorrection = 1.5F;
-	public static float sandRestSpeed = 0.15F;
-	public static int sandMinCellCount = 1;
+	public static int sandResolution = 12;
+	public static float sandFrictionAngle = 15.0F;
+	public static float sandCohesion = 0.015F;
+	public static float sandStiffness = 62.5F;
+	public static float sandWallFriction = 0.5F;
+	public static float sandCfl = 0.35F;
+	public static int sandMaxStepsPerFrame = 16;
+	public static float sandImpactDamping = 0.5F;
+	public static float sandImpactRate = 2.0F;
+	public static float sandImpactCompression = 0.15F;
+	public static float sandRestSpeed = 0.05F;
+	public static float sandRestTime = 0.15F;
+	public static float sandWakeAccel = 0.5F;
 	public static float sandSurfaceIso = 0.5F;
 	public static float sandSurfaceSmoothing = 0.6F;
-	public static float sandGrainSize = 0.02F;
-	public static int sandGrainsPerParticle = 6;
-	public static float sandGrainSpread = 0.45F;
+	public static float sandGrainSize = 0.01F;
+	public static int sandGrainsPerParticle = 32;
+	public static float sandGrainSpread = 0.5F;
 	public static float sandGrainMinPixels = 0.7F;
-	public static float sandColorR = 0.86F;
-	public static float sandColorG = 0.79F;
-	public static float sandColorB = 0.6F;
-	public static float sandColorVariation = 0.2F;
-	public static float sandAo = 0.6F;
+	public static float sandBrightness = 1.1F;
 	public static boolean sandSounds = true;
 
 	public static String ffmpeg = "";
 	public static boolean renderFreezeWorld = true;
+	public static boolean renderSteadyPreview = true;
+	public static float renderCameraSmoothing = 0.12F;
 
 	private WaterSettings() {
 	}

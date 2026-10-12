@@ -109,8 +109,26 @@ final class SurfaceMesher implements AutoCloseable {
 
 	void build(VkCommandBuffer cb, Desc ubo, VkBuf particles, VkBuf counters, int counterIndex, VkBuf dispatchArgs, VkBuf staticSolid,
 		int[] fineBox, boolean fillSheets) {
-		int groups = ComputeProgram.groups(voxels(fineBox), 256);
+		this.buildField(cb, ubo, particles, counters, counterIndex, dispatchArgs, fineBox, fillSheets);
 		int cubeGroups = ComputeProgram.groups(cubes(fineBox), 256);
+		this.netsVertices.bind(cb, ubo, Desc.ssbo(this.densA), Desc.ssbo(this.vertexId), Desc.ssbo(this.verts), Desc.ssbo(this.meshCounters),
+			Desc.ssbo(staticSolid));
+		this.netsVertices.push(cb, this.vertexCapacity);
+		this.netsVertices.dispatch(cb, cubeGroups, 1, 1);
+		Vk.barrier(cb);
+		this.netsQuads.bind(cb, ubo, Desc.ssbo(this.densA), Desc.ssbo(this.vertexId), Desc.ssbo(this.quads), Desc.ssbo(this.meshCounters));
+		this.netsQuads.push(cb, 0, this.quadCapacity);
+		this.netsQuads.dispatch(cb, cubeGroups, 1, 1);
+		Vk.barrier(cb);
+		this.meshArgs.bind(cb, ubo, Desc.ssbo(this.meshCounters));
+		this.meshArgs.push(cb, 0, this.quadCapacity);
+		this.meshArgs.dispatch(cb, 1, 1, 1);
+		Vk.barrier(cb);
+	}
+
+	void buildField(VkCommandBuffer cb, Desc ubo, VkBuf particles, VkBuf counters, int counterIndex, VkBuf dispatchArgs, int[] fineBox,
+		boolean fillSheets) {
+		int groups = ComputeProgram.groups(voxels(fineBox), 256);
 		this.meshCounters.fill(cb, 0);
 		this.clear.bind(cb, ubo, Desc.ssbo(this.zb));
 		this.clear.dispatch(cb, groups, 1, 1);
@@ -146,20 +164,6 @@ final class SurfaceMesher implements AutoCloseable {
 				Vk.barrier(cb);
 			}
 		}
-
-		this.netsVertices.bind(cb, ubo, Desc.ssbo(this.densA), Desc.ssbo(this.vertexId), Desc.ssbo(this.verts), Desc.ssbo(this.meshCounters),
-			Desc.ssbo(staticSolid));
-		this.netsVertices.push(cb, this.vertexCapacity);
-		this.netsVertices.dispatch(cb, cubeGroups, 1, 1);
-		Vk.barrier(cb);
-		this.netsQuads.bind(cb, ubo, Desc.ssbo(this.densA), Desc.ssbo(this.vertexId), Desc.ssbo(this.quads), Desc.ssbo(this.meshCounters));
-		this.netsQuads.push(cb, 0, this.quadCapacity);
-		this.netsQuads.dispatch(cb, cubeGroups, 1, 1);
-		Vk.barrier(cb);
-		this.meshArgs.bind(cb, ubo, Desc.ssbo(this.meshCounters));
-		this.meshArgs.push(cb, 0, this.quadCapacity);
-		this.meshArgs.dispatch(cb, 1, 1, 1);
-		Vk.barrier(cb);
 	}
 
 	@Override

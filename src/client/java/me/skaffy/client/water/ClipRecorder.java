@@ -17,6 +17,7 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.locks.LockSupport;
 import me.skaffy.RealisticWater;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -27,6 +28,7 @@ public final class ClipRecorder {
 	private static final ClipRecorder INSTANCE = new ClipRecorder();
 	private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss");
 	private static final int QUEUE_DEPTH = 4;
+	private static final double PACE_DECAY = 0.985;
 	private static final List<String> FFMPEG_CANDIDATES = List.of(
 		"ffmpeg", System.getProperty("user.home") + "/.local/bin/ffmpeg",
 		"/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg", "/snap/bin/ffmpeg");
@@ -50,6 +52,11 @@ public final class ClipRecorder {
 	private int outstanding;
 	private boolean freeBuffersWhenIdle;
 	private boolean unfreezeOnStop;
+	private long lastFrameNanos;
+	private double paceNanos;
+	private long lastTurnNanos;
+	private double turnX;
+	private double turnY;
 
 	private ClipRecorder() {
 	}
@@ -70,6 +77,23 @@ public final class ClipRecorder {
 		}
 		this.lastRealMs = realMs;
 		return (long) this.clockMs;
+	}
+
+	public double[] filterTurn(double dx, double dy) {
+		long now = System.nanoTime();
+		double real = this.lastTurnNanos == 0L ? 0.0 : (now - this.lastTurnNanos) / 1.0e9;
+		this.lastTurnNanos = now;
+		if (!this.capturing) {
+			this.turnX = 0.0;
+			this.turnY = 0.0;
+			return new double[]{dx, dy};
+		}
+		double clip = 1.0 / this.fps;
+		double scale = real > 0.0 ? Math.clamp(clip / real, 0.01, 4.0) : 1.0;
+		double follow = 1.0 - Math.exp(-clip / Math.max(WaterSettings.renderCameraSmoothing, 1.0e-4F));
+		this.turnX += (dx * scale - this.turnX) * follow;
+		this.turnY += (dy * scale - this.turnY) * follow;
+		return new double[]{this.turnX, this.turnY};
 	}
 
 	public @Nullable Float fixedDt() {
@@ -96,6 +120,8 @@ public final class ClipRecorder {
 		this.totalFrames = Math.max(1, (int) Math.round(seconds * fps));
 		this.framesSubmitted = 0;
 		this.framesWritten = 0;
+		this.lastFrameNanos = 0L;
+		this.paceNanos = 0.0;
 
 		Path clips = mc.gameDirectory.toPath().resolve("clips");
 		String name = "clip-" + STAMP.format(LocalDateTime.now());
@@ -175,7 +201,22 @@ public final class ClipRecorder {
 		if (this.framesSubmitted >= this.totalFrames) {
 			this.capturing = false;
 			RealisticWater.LOGGER.info("All {} frames submitted, waiting for the last readbacks", this.totalFrames);
+		} else if (WaterSettings.renderSteadyPreview) {
+			this.pace();
 		}
+	}
+
+	private void pace() {
+		long now = System.nanoTime();
+		if (this.lastFrameNanos != 0L) {
+			long took = now - this.lastFrameNanos;
+			this.paceNanos = Math.max(took, this.paceNanos * PACE_DECAY);
+			long wait = (long) this.paceNanos - took;
+			if (wait > 0L) {
+				LockSupport.parkNanos(wait);
+			}
+		}
+		this.lastFrameNanos = System.nanoTime();
 	}
 
 	private GpuBuffer takeBuffer(GpuTexture color) {
