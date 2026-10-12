@@ -2,6 +2,7 @@ package me.skaffy.client.water;
 
 import java.util.List;
 import java.util.Map;
+import me.skaffy.client.water.Material;
 import me.skaffy.client.vk.Desc;
 import me.skaffy.client.vk.GraphicsProgram;
 import me.skaffy.client.vk.Program;
@@ -32,6 +33,7 @@ public final class WaterRenderer implements AutoCloseable {
 	private VkTex fluidZ;
 	private VkTex sceneColor;
 	private VkTex gbuffer;
+	private VkTex materialId;
 	private VkTex thickness;
 	private VkTex foam;
 
@@ -40,7 +42,8 @@ public final class WaterRenderer implements AutoCloseable {
 		int U = Desc.UBO;
 		int S = Desc.SSBO;
 		int T = Desc.TEX;
-		GraphicsProgram.State front = new GraphicsProgram.State(RGBA32F, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER, GraphicsProgram.Blend.NONE);
+		GraphicsProgram.State front = new GraphicsProgram.State(RGBA32F, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER, GraphicsProgram.Blend.NONE,
+			VkTex.R32F);
 		GraphicsProgram.State add = new GraphicsProgram.State(this.thicknessFormat, VK10.VK_FORMAT_UNDEFINED, false, false, VK10.VK_COMPARE_OP_ALWAYS,
 			GraphicsProgram.Blend.ADD);
 		Map<String, String> droplets = Map.of("DROPLETS", "1", "VIEW_BINDING", "3");
@@ -52,7 +55,7 @@ public final class WaterRenderer implements AutoCloseable {
 			new GraphicsProgram.State(VkTex.RGBA16F, VK10.VK_FORMAT_UNDEFINED, false, false, VK10.VK_COMPARE_OP_ALWAYS, GraphicsProgram.Blend.ADD),
 			U, S, T, T, S);
 		this.compositeProgram = new GraphicsProgram("fullscreen.vert", "composite.frag", Map.of(),
-			new GraphicsProgram.State(VkTex.RGBA8, VkTex.D32, true, true, VK10.VK_COMPARE_OP_ALWAYS, GraphicsProgram.Blend.NONE), U, T, T, T, T, T, S);
+			new GraphicsProgram.State(VkTex.RGBA8, VkTex.D32, true, true, VK10.VK_COMPARE_OP_ALWAYS, GraphicsProgram.Blend.NONE), U, T, T, T, T, T, T, S);
 	}
 
 	private static boolean blendable(int format) {
@@ -74,12 +77,13 @@ public final class WaterRenderer implements AutoCloseable {
 		this.fluidZ = new VkTex(VkTex.D32, w, h, VkTex.COPY_DST | VkTex.DEPTH);
 		this.sceneColor = new VkTex(VkTex.RGBA8, w, h, VkTex.COPY_DST | VkTex.SAMPLED);
 		this.gbuffer = new VkTex(RGBA32F, w, h, VkTex.COLOR | VkTex.SAMPLED);
+		this.materialId = new VkTex(VkTex.R32F, w, h, VkTex.COLOR | VkTex.SAMPLED);
 		this.thickness = new VkTex(this.thicknessFormat, w, h, VkTex.COLOR | VkTex.SAMPLED);
 		this.foam = new VkTex(VkTex.RGBA16F, w, h, VkTex.COLOR | VkTex.SAMPLED);
 	}
 
 	private void releaseTargets() {
-		for (VkTex t : new VkTex[]{this.sceneDepth, this.fluidZ, this.sceneColor, this.gbuffer, this.thickness, this.foam}) {
+		for (VkTex t : new VkTex[]{this.sceneDepth, this.fluidZ, this.sceneColor, this.gbuffer, this.materialId, this.thickness, this.foam}) {
 			if (t != null) {
 				Vk.destroyLater(t);
 			}
@@ -110,7 +114,7 @@ public final class WaterRenderer implements AutoCloseable {
 		Vk.barrier(cb);
 		Desc depthTex = Desc.tex(this.sceneDepth, this.nearest.handle);
 
-		GraphicsProgram.begin(cb, w, h, this.gbuffer.view, new float[]{0, 0, 0, 0}, this.fluidZ.view);
+		GraphicsProgram.begin(cb, w, h, this.gbuffer.view, new float[]{0, 0, 0, 0}, this.materialId.view, new float[]{-1, 0, 0, 0}, this.fluidZ.view);
 		for (Body body : bodies) {
 			WaterRegion r = body.region();
 			float radius = WaterSettings.particleRadius / r.res;
@@ -151,15 +155,41 @@ public final class WaterRenderer implements AutoCloseable {
 		GraphicsProgram.end(cb);
 		Vk.barrier(cb);
 
+		Desc waterUbo = null;
+		Desc lavaUbo = null;
+		for (Body body : bodies) {
+			if (body.region().material == Material.WATER && waterUbo == null) {
+				waterUbo = body.ubo();
+			} else if (body.region().material == Material.LAVA && lavaUbo == null) {
+				lavaUbo = body.ubo();
+			}
+		}
 		GraphicsProgram.begin(cb, w, h, mainColorView, null, mainDepthView);
-		this.compositeProgram.bind(cb, bodies.getFirst().ubo(),
-			Desc.tex(this.gbuffer, this.nearest.handle),
-			Desc.tex(this.thickness, this.linear.handle),
-			Desc.tex(this.sceneColor, this.linear.handle),
-			depthTex,
-			Desc.tex(this.foam, this.linear.handle),
-			view);
-		this.compositeProgram.draw(cb, 3, 1);
+		Desc matTex = Desc.tex(this.materialId, this.nearest.handle);
+		if (waterUbo != null) {
+			this.compositeProgram.bind(cb, waterUbo,
+				Desc.tex(this.gbuffer, this.nearest.handle),
+				Desc.tex(this.thickness, this.linear.handle),
+				Desc.tex(this.sceneColor, this.linear.handle),
+				depthTex,
+				Desc.tex(this.foam, this.linear.handle),
+				matTex,
+				view);
+			this.compositeProgram.push(cb, Program.f(0.0F));
+			this.compositeProgram.draw(cb, 3, 1);
+		}
+		if (lavaUbo != null) {
+			this.compositeProgram.bind(cb, lavaUbo,
+				Desc.tex(this.gbuffer, this.nearest.handle),
+				Desc.tex(this.thickness, this.linear.handle),
+				Desc.tex(this.sceneColor, this.linear.handle),
+				depthTex,
+				Desc.tex(this.foam, this.linear.handle),
+				matTex,
+				view);
+			this.compositeProgram.push(cb, Program.f(2.0F));
+			this.compositeProgram.draw(cb, 3, 1);
+		}
 		GraphicsProgram.end(cb);
 	}
 
