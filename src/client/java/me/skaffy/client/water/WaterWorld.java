@@ -890,10 +890,10 @@ public final class WaterWorld {
 		putInts(b, o + 48, r.material.usesWhitewater() && WaterSettings.whitewater ? 1 : 0, sourceCount, !sand && this.localPlayerFirst ? 1 : 0,
 			WaterSettings.wwCellLimit);
 		putFloats(b, o + 64, 0.0F, -WaterSettings.gravity * res, 0.0F, dt);
-		float flipRatio = lava ? WaterSettings.lavaFlipRatio : WaterSettings.flipRatio;
+		float flipRatio = lava ? WaterSettings.effectiveLavaFlipRatio() : WaterSettings.flipRatio;
 		float flip = (float) Math.pow(flipRatio, dt * 60.0F);
 		putFloats(b, o + 80, flip, PARTICLES_PER_CELL, WaterSettings.volumeCorrection, 0.0F);
-		float maxSpeed = (lava ? WaterSettings.lavaMaxSpeed : WaterSettings.maxSpeed) * res;
+		float maxSpeed = (lava ? WaterSettings.effectiveLavaMaxSpeed() : WaterSettings.maxSpeed) * res;
 		putFloats(b, o + 96, maxSpeed, h, this.simTime, 0.0F);
 		putFloats(b, o + 112, WaterSettings.wwTrappedAirRate, WaterSettings.wwWaveCrestRate, WaterSettings.wwEnergyMin, WaterSettings.wwEnergyMax);
 		putFloats(b, o + 128, WaterSettings.wwTrappedAirMin, WaterSettings.wwTrappedAirMax, WaterSettings.wwWaveCrestMin, WaterSettings.wwWaveCrestMax);
@@ -973,8 +973,8 @@ public final class WaterWorld {
 			float impactViscosity = WaterSettings.sandImpactDamping * 0.25F / Math.max(dt, 1e-5F);
 			putFloats(b, o + 3872, WaterSettings.sandWallFriction, 1.0F / PARTICLES_PER_CELL, impactViscosity, WaterSettings.sandImpactRate);
 		} else {
-			float filmFriction = lava ? WaterSettings.lavaFilmFriction : WaterSettings.filmFriction;
-			float strandedTime = lava ? WaterSettings.lavaStrandedTime : WaterSettings.strandedTime;
+			float filmFriction = lava ? WaterSettings.effectiveLavaFilmFriction() : WaterSettings.filmFriction;
+			float strandedTime = lava ? WaterSettings.effectiveLavaStrandedTime() : WaterSettings.strandedTime;
 			int strandedNeighbors = lava ? WaterSettings.lavaStrandedNeighbors : WaterSettings.strandedNeighbors;
 			float filmDepth = (lava ? WaterSettings.lavaFilmDepth : WaterSettings.filmDepth) * res;
 			putFloats(b, o + 3840, r.material.shaderId(), 0.0F, 0.0F, 1.0F);

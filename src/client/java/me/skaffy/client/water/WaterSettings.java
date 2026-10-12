@@ -111,6 +111,8 @@ public final class WaterSettings {
 	public static boolean sandSounds = true;
 
 	public static int lavaResolution = 6;
+	/** Multiplier for lava FLIP viscosity; 1 = default, higher = slower and stickier. */
+	public static float lavaViscosity = 1.0F;
 	public static float lavaFlipRatio = 0.9993F;
 	public static float lavaMaxSpeed = 5.0F;
 	public static float lavaFilmFriction = 140.0F;
@@ -139,6 +141,27 @@ public final class WaterSettings {
 	public static float renderCameraSmoothing = 0.12F;
 
 	private WaterSettings() {
+	}
+
+	private static float lavaViscosityScale() {
+		return Math.max(0.05F, lavaViscosity);
+	}
+
+	public static float effectiveLavaFlipRatio() {
+		float v = lavaViscosityScale();
+		return 1.0F - (1.0F - lavaFlipRatio) / v;
+	}
+
+	public static float effectiveLavaMaxSpeed() {
+		return lavaMaxSpeed / lavaViscosityScale();
+	}
+
+	public static float effectiveLavaFilmFriction() {
+		return lavaFilmFriction * lavaViscosityScale();
+	}
+
+	public static float effectiveLavaStrandedTime() {
+		return lavaStrandedTime * lavaViscosityScale();
 	}
 
 	public static Map<String, Field> fields() {
