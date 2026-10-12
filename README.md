@@ -22,4 +22,4 @@ Screenshots:
 
 <img width="1280" height="720" alt="New Project - 2026-10-07T163030 494" src="https://github.com/user-attachments/assets/fbba1b63-390b-4d88-aa66-26260c843ef5" />
 
-<3 @Claude
+IMPORTANT:The mod is coded by Claude but it is looked through by me and the idea for how things work is on me too
