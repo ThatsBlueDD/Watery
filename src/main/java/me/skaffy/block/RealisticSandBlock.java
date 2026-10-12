@@ -1,6 +1,8 @@
 package me.skaffy.block;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
@@ -11,6 +13,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -35,12 +38,16 @@ public class RealisticSandBlock extends Block {
 
 	@Override
 	protected VoxelShape getShape(final BlockState state, final BlockGetter level, final BlockPos pos, final CollisionContext context) {
-		return SHAPES[state.getValue(LAYERS)];
+		if (context instanceof EntityCollisionContext entityContext && entityContext.getEntity() instanceof Player player
+			&& player.getMainHandItem().is(ItemTags.SHOVELS)) {
+			return SHAPES[state.getValue(LAYERS)];
+		}
+		return Shapes.empty();
 	}
 
 	@Override
 	protected VoxelShape getCollisionShape(final BlockState state, final BlockGetter level, final BlockPos pos, final CollisionContext context) {
-		return SHAPES[state.getValue(LAYERS) - 1];
+		return Shapes.empty();
 	}
 
 	@Override
@@ -60,16 +67,15 @@ public class RealisticSandBlock extends Block {
 
 	@Override
 	protected boolean isPathfindable(final BlockState state, final PathComputationType type) {
-		return type == PathComputationType.LAND && state.getValue(LAYERS) < 5;
+		return true;
 	}
 
 	@Override
 	protected boolean canBeReplaced(final BlockState state, final BlockPlaceContext context) {
-		int layers = state.getValue(LAYERS);
 		if (context.getItemInHand().is(this.asItem())) {
-			return layers < MAX_LAYERS;
+			return state.getValue(LAYERS) < MAX_LAYERS;
 		}
-		return layers == 1;
+		return true;
 	}
 
 	@Override
