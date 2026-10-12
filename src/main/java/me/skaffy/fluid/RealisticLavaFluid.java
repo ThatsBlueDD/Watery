@@ -2,9 +2,12 @@ package me.skaffy.fluid;
 
 import java.util.Optional;
 import me.skaffy.ModContent;
+import me.skaffy.ModSettings;
 import me.skaffy.block.RealisticWaterBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -19,6 +22,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -51,6 +55,60 @@ public abstract class RealisticLavaFluid extends FlowingFluid {
 
 	@Override
 	public void tick(final ServerLevel level, final BlockPos pos, BlockState blockState, FluidState fluidState) {
+	}
+
+	@Override
+	public void randomTick(final ServerLevel level, final BlockPos pos, final FluidState fluidState, final RandomSource random) {
+		if (!ModSettings.lavaIgniteFlammables || !level.canSpreadFireAround(pos)) {
+			return;
+		}
+		int passes = random.nextInt(3);
+		if (passes > 0) {
+			BlockPos testPos = pos;
+			for (int pass = 0; pass < passes; pass++) {
+				testPos = testPos.offset(random.nextInt(3) - 1, 1, random.nextInt(3) - 1);
+				if (!level.isLoaded(testPos)) {
+					return;
+				}
+				BlockState blockState = level.getBlockState(testPos);
+				if (blockState.isAir()) {
+					if (this.hasFlammableNeighbours(level, testPos)) {
+						level.setBlockAndUpdate(testPos, BaseFireBlock.getState(level, testPos));
+						return;
+					}
+				} else if (blockState.is(BlockTags.BLOCKS_LAVA_FIRE_SPREAD)) {
+					return;
+				}
+			}
+		} else {
+			for (int i = 0; i < 3; i++) {
+				BlockPos testPos = pos.offset(random.nextInt(3) - 1, 0, random.nextInt(3) - 1);
+				if (!level.isLoaded(testPos)) {
+					return;
+				}
+				if (level.isEmptyBlock(testPos.above()) && this.isFlammable(level, testPos)) {
+					level.setBlockAndUpdate(testPos.above(), BaseFireBlock.getState(level, testPos));
+				}
+			}
+		}
+	}
+
+	@Override
+	protected boolean isRandomlyTicking() {
+		return true;
+	}
+
+	private boolean hasFlammableNeighbours(final LevelReader level, final BlockPos pos) {
+		for (Direction direction : Direction.values()) {
+			if (this.isFlammable(level, pos.relative(direction))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean isFlammable(final LevelReader level, final BlockPos pos) {
+		return level.isInsideBuildHeight(pos.getY()) && level.hasChunkAt(pos) && level.getBlockState(pos).ignitedByLava();
 	}
 
 	@Override
