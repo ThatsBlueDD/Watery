@@ -43,6 +43,9 @@ public final class WaterCommands {
 			.then(literal("sand")
 				.executes(c -> ball(c, 2, Material.SAND))
 				.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> ball(c, IntegerArgumentType.getInteger(c, "size"), Material.SAND))))
+			.then(literal("lava")
+				.executes(c -> ball(c, 3, Material.LAVA))
+				.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> ball(c, IntegerArgumentType.getInteger(c, "size"), Material.LAVA))))
 			.then(literal("remove")
 				.executes(c -> {
 					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.WATER);
@@ -52,6 +55,11 @@ public final class WaterCommands {
 				.then(literal("sand").executes(c -> {
 					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.SAND);
 					c.getSource().sendFeedback(Component.literal("Removing all realistic sand around you"));
+					return 1;
+				}))
+				.then(literal("lava").executes(c -> {
+					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.LAVA);
+					c.getSource().sendFeedback(Component.literal("Removing all realistic lava around you (springs included)"));
 					return 1;
 				})))
 			.then(literal("set")
@@ -79,7 +87,12 @@ public final class WaterCommands {
 		double half = size * 0.5;
 		WaterWorld.get().addEmitter(new WaterRegion.Emitter(
 			center.x - half, center.y - half, center.z - half, center.x + half, center.y + half, center.z + half, 0, 0, 0), material);
-		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + (material == Material.SAND ? "sand" : "water")));
+		String name = switch (material) {
+			case SAND -> "sand";
+			case LAVA -> "lava";
+			default -> "water";
+		};
+		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + name));
 		return 1;
 	}
 

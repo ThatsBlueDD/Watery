@@ -109,6 +109,28 @@ public final class WaterSettings {
 	public static float sandBrightness = 1.1F;
 	public static boolean sandSounds = true;
 
+	public static int lavaResolution = 6;
+	public static float lavaFlipRatio = 0.997F;
+	public static float lavaMaxSpeed = 12.0F;
+	public static float lavaFilmFriction = 80.0F;
+	public static float lavaStrandedTime = 3.0F;
+	public static int lavaStrandedNeighbors = 16;
+	public static float lavaFilmDepth = 0.05F;
+	public static float lavaRefraction = 0.04F;
+	public static float lavaAbsorbR = 2.8F;
+	public static float lavaAbsorbG = 5.5F;
+	public static float lavaAbsorbB = 8.0F;
+	public static float lavaScatterR = 1.2F;
+	public static float lavaScatterG = 0.35F;
+	public static float lavaScatterB = 0.05F;
+	public static float lavaScatterDensity = 2.5F;
+	public static float lavaUnderwaterFog = 0.35F;
+	public static float lavaSurfaceSmoothing = 0.75F;
+	public static float lavaDetailStrength = 0.25F;
+	public static float lavaRoughness = 0.35F;
+	public static float lavaSpecular = 2.5F;
+	public static boolean lavaFlowSounds = true;
+
 	public static String ffmpeg = "";
 	public static boolean renderFreezeWorld = true;
 	public static boolean renderSteadyPreview = true;

@@ -139,6 +139,9 @@ public final class WaterRenderer implements AutoCloseable {
 		if (WaterSettings.whitewater) {
 			for (Body body : bodies) {
 				WaterRegion r = body.region();
+				if (!r.material.usesWhitewater()) {
+					continue;
+				}
 				this.whitewaterProgram.bind(cb, body.ubo(), Desc.ssbo(r.currentWhitewater()), depthTex, Desc.tex(this.gbuffer, this.nearest.handle), view);
 				this.whitewaterProgram.push(cb, Program.f(WaterSettings.wwRadius), Program.f(0.5F), Program.f(0.3F), Program.f(WaterSettings.wwMaxPixels),
 					Program.f(WaterSettings.foamSize));

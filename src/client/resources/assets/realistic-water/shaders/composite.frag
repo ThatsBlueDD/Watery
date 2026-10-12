@@ -112,7 +112,25 @@ vec3 sunSpecular(vec3 n, vec3 V, float footprint) {
     return vec3(1.0, 0.96, 0.88) * min(D * Vis * F * NoL * G.shadeB.x, 30.0) * G.sunDir.w;
 }
 
+vec3 shadeAboveLava(vec2 uv, vec3 n, float fd, float ambient) {
+    vec3 P = viewPosAt(uv, fd);
+    vec3 V = normalize(-P);
+    n = dot(n, V) < 0.0 ? -n : n;
+    float footprint = pixelFootprint(fd);
+    vec3 wrinkled = rippleNormal(n, P, footprint);
+    n = normalize(mix(n, wrinkled, smoothstep(0.0, 0.2, dot(wrinkled, V))));
+    float path = max(texture(thicknessTex, uv).r, 0.0) * G.waterA.y;
+    vec3 glow = G.scatter.rgb * (1.4 + ambient);
+    vec3 core = glow * (1.0 - exp(-G.scatter.w * path * 0.45));
+    float fresnel = pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 2.0);
+    vec3 rim = glow * fresnel * 0.85;
+    return core + rim + sunSpecular(n, V, footprint) * vec3(1.0, 0.65, 0.25);
+}
+
 vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient) {
+    if (isLava()) {
+        return shadeAboveLava(uv, n, fd, ambient);
+    }
     vec3 P = viewPosAt(uv, fd);
     vec3 V = normalize(-P);
     n = dot(n, V) < 0.0 ? -n : n;
@@ -209,10 +227,10 @@ void main() {
     float outDepth = sceneDev;
 
     if (underwater) {
-        vec3 deep = G.scatter.rgb * ambient;
+        vec3 deep = isLava() ? G.scatter.rgb * (1.2 + ambient) : G.scatter.rgb * ambient;
         float visible = min(sceneDist, 160.0);
         if (hasFluid) {
-            color = shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
+            color = isLava() ? deep * 1.35 : shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
             visible = fd;
             vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
             outDepth = clip.z / clip.w;

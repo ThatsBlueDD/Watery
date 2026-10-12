@@ -59,7 +59,11 @@ layout(std140, set = 0, binding = 0) uniform Globals {
 } G;
 
 bool isSand() {
-    return G.matA.x > 0.5;
+    return G.matA.x > 0.5 && G.matA.x < 1.5;
+}
+
+bool isLava() {
+    return abs(G.matA.x - 2.0) < 0.5;
 }
 
 #define NX G.dims.x

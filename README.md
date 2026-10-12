@@ -12,7 +12,8 @@ How to use:
 3. Put the mod to the mods folder
 4. Open the game and set the Graphics API in the Video Settings to Vulkan and then restart the game
 5. Place down a ball of water with "/water ball"
-6. Or go in your Creative inventory and get a "Realistic Water Bucket"
+6. Or go in your Creative inventory and get a "Realistic Water Bucket" or "Realistic Lava Bucket"
+7. Spawn lava with "/water lava" or "/water ball lava [size]"; remove with "/water remove lava"
 
 #
 
