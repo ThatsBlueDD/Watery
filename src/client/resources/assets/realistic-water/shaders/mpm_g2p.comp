@@ -1,0 +1,191 @@
+#version 450
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_ballot : enable
+#include "common.glsl"
+#include "mpm.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { Particle src[]; };
+layout(std430, binding = 2) writeonly buffer Dst { Particle dst[]; };
+layout(std430, binding = 3) buffer Counters { uint counters[]; };
+layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
+layout(std430, binding = 5) readonly buffer StateSrc { float stateSrc[]; };
+layout(std430, binding = 6) writeonly buffer StateDst { float stateDst[]; };
+layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+#define C_AWAKE 14
+
+bool solidAt(vec3 p) {
+    ivec3 c = ivec3(floor(p));
+    return inGrid(c) && staticSolid[cellIndex(c)] != 0u;
+}
+
+vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
+    if (solidAt(x)) {
+        ivec3 c = ivec3(floor(x));
+        const ivec3 OUT[6] = ivec3[](ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 0, 1), ivec3(0, 0, -1), ivec3(0, -1, 0));
+        for (int k = 0; k < 6; k++) {
+            ivec3 nc = c + OUT[k];
+            if (!inGrid(nc) || staticSolid[cellIndex(nc)] == 0u) {
+                v = vec3(0.0);
+                return vec3(nc) + 0.5;
+            }
+        }
+        return x;
+    }
+    vec3 r = x;
+    const int ORDER[3] = int[](1, 0, 2);
+    for (int k = 0; k < 3; k++) {
+        int a = ORDER[k];
+        vec3 t = r;
+        t[a] = xn[a];
+        if (!solidAt(t)) {
+            r = t;
+        } else {
+            v[a] = 0.0;
+        }
+    }
+    return r;
+}
+
+vec3 collideEntities(vec3 x, inout vec3 v) {
+    for (int e = 0; e < numEntities(); e++) {
+        vec3 lo = entMin(e);
+        vec3 hi = entMax(e);
+        if (any(lessThan(x, lo)) || any(greaterThan(x, hi))) {
+            continue;
+        }
+        vec3 dLo = x - lo;
+        vec3 dHi = hi - x;
+        vec3 ve = entVel(e);
+        int axis = 0;
+        float best = 1e9;
+        float dir = 1.0;
+        for (int a = 0; a < 3; a++) {
+            if (dLo[a] < best) { best = dLo[a]; axis = a; dir = -1.0; }
+            if (dHi[a] < best) { best = dHi[a]; axis = a; dir = 1.0; }
+        }
+        x[axis] = dir > 0.0 ? hi[axis] + 0.01 : lo[axis] - 0.01;
+        v[axis] = dir * max(dir * v[axis], dir * ve[axis]);
+    }
+    return x;
+}
+
+void main() {
+    uint i = GID_U;
+    if (i >= counters[pc.a.x]) {
+        return;
+    }
+    Particle p = src[i];
+    if (p.pos.w < 0.0) {
+        return;
+    }
+    vec3 x = p.pos.xyz;
+    int si = int(i) * STATE_STRIDE;
+    bool valid = p.pos.w >= 0.5;
+    mat3 F = valid ? LOAD_MAT(stateSrc, si + 9) : mat3(1.0);
+    float tau6[6] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    float rest = 0.0;
+    if (valid) {
+        for (int k = 0; k < 6; k++) {
+            tau6[k] = stateSrc[si + STATE_TAU + k];
+        }
+        rest = stateSrc[si + STATE_REST];
+    }
+    vec3 v;
+    mat3 C = mat3(0.0);
+    float spread = max(p.pos.w, 1.0);
+    bool asleep = false;
+    if (inInnerBox(x)) {
+        v = vec3(0.0);
+        float density = 0.0;
+        Stencil s = stencil(x);
+        for (int k = 0; k < 3; k++) {
+            for (int j = 0; j < 3; j++) {
+                for (int ii = 0; ii < 3; ii++) {
+                    ivec3 c = s.base + ivec3(ii, j, k);
+                    float w = s.w[ii].x * s.w[j].y * s.w[k].z;
+                    vec4 g = grid[cellIndex(c)];
+                    vec3 dpos = vec3(ii, j, k) - s.fx;
+                    v += w * g.xyz;
+                    C += 4.0 * w * outerProduct(g.xyz, dpos);
+                    density += w * g.w;
+                }
+            }
+        }
+        if (rest >= MPM_REST_TIME) {
+            rest = length(v) > MPM_WAKE_SPEED ? 0.0 : rest;
+        } else {
+            rest = length(v) < MPM_REST_SPEED ? rest + DT : 0.0;
+        }
+        asleep = rest >= MPM_REST_TIME;
+        if (asleep) {
+            v = vec3(0.0);
+            C = mat3(0.0);
+        } else {
+            mat3 tau;
+            F = projectSand((mat3(1.0) + DT * C) * F, C[0][0] + C[1][1] + C[2][2], tau);
+            tau6 = float[](tau[0][0], tau[1][1], tau[2][2], tau[1][0], tau[2][0], tau[2][1]);
+            spread = clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0);
+        }
+    } else {
+        v = p.vel.xyz + G.gravityDt.xyz * DT;
+        rest = 0.0;
+    }
+    float maxSpeed = G.simB.x;
+    float sp = length(v);
+    if (sp > maxSpeed) {
+        v *= maxSpeed / sp;
+    }
+    vec3 xn = asleep ? x : collideStatic(x, x + DT * v, v);
+    vec3 pushed = collideEntities(xn, v);
+    if (pushed != xn) {
+        rest = 0.0;
+        asleep = false;
+    }
+    xn = pushed;
+    if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v)) || any(isnan(F[0])) || any(isnan(F[1])) || any(isnan(F[2]))) {
+        return;
+    }
+    float killMargin = G.killInfo.y;
+    if (any(lessThan(xn, vec3(-killMargin))) || any(greaterThanEqual(xn, vec3(NX, NY, NZ) + killMargin)) || xn.y < G.killInfo.x) {
+        return;
+    }
+    uint groupTotal = subgroupAdd(1u);
+    uint prefix = subgroupExclusiveAdd(1u);
+    float groupMax = subgroupMax(length(v));
+    uint groupAwake = subgroupAdd(asleep ? 0u : 1u);
+    uint base = 0u;
+    if (subgroupElect()) {
+        base = atomicAdd(counters[pc.a.y], groupTotal);
+        atomicMax(counters[6], floatBitsToUint(groupMax));
+        atomicAdd(counters[C_AWAKE], groupAwake);
+    }
+    uint o = subgroupBroadcastFirst(base) + prefix;
+    if (o >= uint(G.caps.x)) {
+        return;
+    }
+    dst[o] = Particle(vec4(xn, spread), vec4(v, p.vel.w));
+    int so = int(o) * STATE_STRIDE;
+    for (int c = 0; c < 3; c++) {
+        for (int r = 0; r < 3; r++) {
+            stateDst[so + 3 * c + r] = C[c][r];
+            stateDst[so + 9 + 3 * c + r] = F[c][r];
+        }
+    }
+    for (int k = 0; k < 6; k++) {
+        stateDst[so + STATE_TAU + k] = tau6[k];
+    }
+    stateDst[so + STATE_REST] = rest;
+    uvec3 cell = uvec3(ivec3(floor(xn)) + AABB_BIAS);
+    uvec3 lo = uvec3(subgroupMin(cell.x), subgroupMin(cell.y), subgroupMin(cell.z));
+    uvec3 hi = uvec3(subgroupMax(cell.x), subgroupMax(cell.y), subgroupMax(cell.z));
+    if (subgroupElect()) {
+        atomicMin(counters[8], lo.x);
+        atomicMin(counters[9], lo.y);
+        atomicMin(counters[10], lo.z);
+        atomicMax(counters[11], hi.x);
+        atomicMax(counters[12], hi.y);
+        atomicMax(counters[13], hi.z);
+    }
+}

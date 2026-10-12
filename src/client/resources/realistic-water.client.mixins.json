@@ -9,7 +9,8 @@
 		"FrontendGpuDeviceAccessor",
 		"GameRendererMixin",
 		"LevelRendererMixin",
-		"MinecraftMixin"
+		"MinecraftMixin",
+		"MouseHandlerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

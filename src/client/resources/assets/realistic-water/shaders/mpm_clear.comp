@@ -1,0 +1,15 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) writeonly buffer Grid { ivec4 grid[]; };
+layout(std430, binding = 2) writeonly buffer Count { int cellCount[]; };
+
+void main() {
+    int t = int(GID_U);
+    if (t >= G.boxMin.w) {
+        return;
+    }
+    int i = cellIndex(boxCell(t));
+    grid[i] = ivec4(0);
+    cellCount[i] = 0;
+}

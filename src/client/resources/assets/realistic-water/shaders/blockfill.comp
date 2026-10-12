@@ -4,7 +4,11 @@ layout(local_size_x = 64) in;
 layout(std430, binding = 1) readonly buffer Count { int cellCount[]; };
 layout(std430, binding = 2) readonly buffer Flags { uint cellFlags[]; };
 layout(std430, binding = 3) writeonly buffer Fill { uint fill[]; };
+#ifdef MPM
+layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
+#else
 layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
+#endif
 layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
 
 bool fluidAt(ivec3 c) {
@@ -12,11 +16,15 @@ bool fluidAt(ivec3 c) {
 }
 
 float cellSpeed(ivec3 c) {
+#ifdef MPM
+    return length(grid[cellIndex(c)].xyz);
+#else
     vec3 u = 0.5 * vec3(
         vel[faceIndex(0, c)] + vel[faceIndex(0, c + ivec3(1, 0, 0))],
         vel[faceIndex(1, c)] + vel[faceIndex(1, c + ivec3(0, 1, 0))],
         vel[faceIndex(2, c)] + vel[faceIndex(2, c + ivec3(0, 0, 1))]);
     return length(u);
+#endif
 }
 
 void main() {

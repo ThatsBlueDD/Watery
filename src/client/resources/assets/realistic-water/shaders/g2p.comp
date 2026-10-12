@@ -58,7 +58,6 @@ bool waterFilm(vec3 x, inout vec3 v, inout vec3 dx, inout float dryness) {
     return dryness < 1.0;
 }
 
-
 vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
     if (solidAt(x)) {
         ivec3 c = ivec3(floor(x));
@@ -158,7 +157,6 @@ void main() {
     vec3 x = p.pos.xyz;
     vec3 v = p.vel.xyz;
     float tag = p.pos.w;
-    bool sand = isSand();
     float maxSpeed = G.simB.x;
     bool gridded = inInnerBox(x);
     vec3 dx;
@@ -167,11 +165,7 @@ void main() {
         vec3 uOld = sampleVelOld(x);
         v = mix(uNew, v + (uNew - uOld), G.simA.x);
         dx = DT * sampleVel(x + 0.5 * DT * uNew);
-        if (sand && length(uNew) < G.matB.x && length(v) < G.matB.x) {
-            v = vec3(0.0);
-            dx = vec3(0.0);
-        }
-        if (!sand && !waterFilm(x, v, dx, tag)) {
+        if (!waterFilm(x, v, dx, tag)) {
             return;
         }
     } else {
@@ -209,7 +203,7 @@ void main() {
     if (o >= uint(G.caps.x)) {
         return;
     }
-    dst[o] = Particle(vec4(xn, tag), vec4(v, sand ? p.vel.w : 0.0));
+    dst[o] = Particle(vec4(xn, tag), vec4(v, 0.0));
     uvec3 cell = uvec3(ivec3(floor(xn)) + AABB_BIAS);
     uvec3 lo = uvec3(subgroupMin(cell.x), subgroupMin(cell.y), subgroupMin(cell.z));
     uvec3 hi = uvec3(subgroupMax(cell.x), subgroupMax(cell.y), subgroupMax(cell.z));

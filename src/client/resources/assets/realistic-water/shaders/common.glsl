@@ -55,6 +55,7 @@ layout(std140, set = 0, binding = 0) uniform Globals {
     vec4 matB;
     vec4 matC;
     vec4 matD;
+    vec4 matE;
 } G;
 
 bool isSand() {

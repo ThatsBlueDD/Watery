@@ -19,6 +19,7 @@ void main() {
     uint o = atomicAdd(dstCounters[pc.a.y], 1u);
     if (o < uint(pc.a.z)) {
         p.pos.xyz += pc.b.xyz;
+        p.pos.w = 0.0;
         dst[o] = p;
     }
 }

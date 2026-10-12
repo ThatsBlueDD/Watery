@@ -1,0 +1,59 @@
+#version 450
+#include "common.glsl"
+#include "mpm.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { Particle src[]; };
+layout(std430, binding = 2) readonly buffer State { float state[]; };
+layout(std430, binding = 3) buffer Grid { int grid[]; };
+layout(std430, binding = 4) buffer Count { int cellCount[]; };
+layout(std430, binding = 5) readonly buffer Counters { uint counters[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+void main() {
+    uint i = GID_U;
+    if (i >= counters[pc.a.x]) {
+        return;
+    }
+    Particle p = src[i];
+    vec3 x = p.pos.xyz;
+    if (p.pos.w < 0.0 || !inInnerBox(x)) {
+        return;
+    }
+    mat3 C = mat3(0.0);
+    mat3 tau = mat3(0.0);
+    if (p.pos.w >= 0.5) {
+        int o = int(i) * STATE_STRIDE;
+        C = LOAD_MAT(state, o);
+        int t = o + STATE_TAU;
+        tau = mat3(state[t], state[t + 3], state[t + 4], state[t + 3], state[t + 1], state[t + 5], state[t + 4], state[t + 5], state[t + 2]);
+    }
+    float squeeze = C[0][0] + C[1][1] + C[2][2];
+    if (squeeze < 0.0) {
+        tau += MPM_IMPACT_VISCOSITY / MPM_VOLUME * squeeze * mat3(1.0);
+    }
+    mat3 affine = -DT * MPM_VOLUME * 4.0 * tau + C;
+    vec3 v = p.vel.xyz;
+    Stencil s = stencil(x);
+    for (int k = 0; k < 3; k++) {
+        for (int j = 0; j < 3; j++) {
+            for (int ii = 0; ii < 3; ii++) {
+                ivec3 c = s.base + ivec3(ii, j, k);
+                if (!inBox(c)) {
+                    continue;
+                }
+                float w = s.w[ii].x * s.w[j].y * s.w[k].z;
+                vec3 dpos = vec3(ii, j, k) - s.fx;
+                vec3 mom = w * (v + affine * dpos);
+                int n = 4 * cellIndex(c);
+                atomicAdd(grid[n], int(round(w * MASS_FP)));
+                atomicAdd(grid[n + 1], int(round(mom.x * MOM_FP)));
+                atomicAdd(grid[n + 2], int(round(mom.y * MOM_FP)));
+                atomicAdd(grid[n + 3], int(round(mom.z * MOM_FP)));
+            }
+        }
+    }
+    ivec3 cell = ivec3(floor(x));
+    if (inBox(cell)) {
+        atomicAdd(cellCount[cellIndex(cell)], 1);
+    }
+}

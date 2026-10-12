@@ -1,0 +1,59 @@
+#version 450
+#include "common.glsl"
+#include "mpm.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) buffer Grid { ivec4 grid[]; };
+layout(std430, binding = 2) readonly buffer Static { uint staticSolid[]; };
+
+bool solid(ivec3 c) {
+    return inGrid(c) && staticSolid[cellIndex(c)] != 0u;
+}
+
+vec3 slide(vec3 v, vec3 n) {
+    float vn = dot(v, n);
+    if (vn >= 0.0) {
+        return v;
+    }
+    vec3 vt = v - vn * n;
+    float t = length(vt);
+    return t > -MPM_WALL_FRICTION * vn ? vt * (1.0 + MPM_WALL_FRICTION * vn / t) : vec3(0.0);
+}
+
+void main() {
+    int t = int(GID_U);
+    if (t >= G.boxMin.w) {
+        return;
+    }
+    ivec3 c = boxCell(t);
+    int i = cellIndex(c);
+    ivec4 g = grid[i];
+    float mass = float(g.x) / MASS_FP;
+    if (mass < 1e-5) {
+        grid[i] = ivec4(0);
+        return;
+    }
+    vec3 v = vec3(g.yzw) / MOM_FP / mass + G.gravityDt.xyz * DT;
+    if (solid(c)) {
+        vec3 n = vec3(0.0);
+        for (int a = 0; a < 3; a++) {
+            ivec3 e = axisVec(a);
+            n[a] += (solid(c + e) ? 0.0 : 1.0) - (solid(c - e) ? 0.0 : 1.0);
+        }
+        v = dot(n, n) > 0.0 ? slide(v, normalize(n)) : vec3(0.0);
+    } else {
+        for (int a = 0; a < 3; a++) {
+            ivec3 e = axisVec(a);
+            if (solid(c - e)) {
+                v = slide(v, vec3(e));
+            }
+            if (solid(c + e)) {
+                v = slide(v, -vec3(e));
+            }
+        }
+    }
+    float speed = length(v);
+    if (speed > G.simB.x) {
+        v *= G.simB.x / speed;
+    }
+    grid[i] = ivec4(floatBitsToInt(v), floatBitsToInt(mass));
+}
