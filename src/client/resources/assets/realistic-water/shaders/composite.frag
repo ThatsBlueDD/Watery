@@ -220,12 +220,17 @@ void main() {
     float sceneDist = linearDepth(sceneDev);
     bool hasFluid = fd > 0.0 && fd < sceneDist;
     bool underwater = viewState.x > 0.5;
-    if (hasFluid) {
+    bool matTagged = matId >= -0.5;
+    if (hasFluid && matTagged) {
         if (lavaPass) {
             if (abs(matId - 2.0) > 0.25) {
                 discard;
             }
         } else if (abs(matId) > 0.25) {
+            discard;
+        }
+    } else if (hasFluid && !matTagged) {
+        if (lavaPass) {
             discard;
         }
     } else if (lavaPass) {

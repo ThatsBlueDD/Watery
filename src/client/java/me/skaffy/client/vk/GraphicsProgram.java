@@ -55,7 +55,10 @@ public final class GraphicsProgram extends Program {
 				.depthWriteEnable(state.depthWrite)
 				.depthCompareOp(state.depthCompare);
 			int colorAttachments = state.extraColorFormat != 0 ? 2 : 1;
-			VkPipelineColorBlendAttachmentState.Buffer blend = VkPipelineColorBlendAttachmentState.calloc(colorAttachments, stack).colorWriteMask(0xF);
+			VkPipelineColorBlendAttachmentState.Buffer blend = VkPipelineColorBlendAttachmentState.calloc(colorAttachments, stack);
+			for (int i = 0; i < colorAttachments; i++) {
+				blend.get(i).colorWriteMask(0xF);
+			}
 			if (state.blend == Blend.ADD) {
 				blend.get(0).blendEnable(true)
 					.srcColorBlendFactor(VK10.VK_BLEND_FACTOR_ONE).dstColorBlendFactor(VK10.VK_BLEND_FACTOR_ONE).colorBlendOp(VK10.VK_BLEND_OP_ADD)
