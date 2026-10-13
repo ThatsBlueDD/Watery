@@ -398,10 +398,12 @@ public final class WaterWorld {
 			for (Material m : Material.values()) {
 				SolidCache cache = this.solids(m);
 				if (cache.update(level, pos)) {
+					boolean sandCache = cache.ignoreSand;
 					for (WaterRegion r : this.regions) {
-						if (r.material == m && r.res == cache.res) {
-							r.patchSolid(level, cache, pos);
+						if (r.res != cache.res || sandCache != r.material.isGranular()) {
+							continue;
 						}
+						r.patchSolid(level, cache, pos);
 					}
 				}
 			}
