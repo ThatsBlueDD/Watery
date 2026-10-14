@@ -2,10 +2,12 @@ package me.skaffy.client.mixin;
 
 import me.skaffy.block.RealisticSandBlock;
 import me.skaffy.client.water.WaterWorld;
+import me.skaffy.fluid.RealisticLavaFluid;
 import me.skaffy.fluid.RealisticWaterFluid;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,7 +18,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ClientLevelMixin {
 	@Unique
 	private static boolean realisticWater$invisible(BlockState state) {
-		return state.isAir() || RealisticWaterFluid.isRealistic(state.getFluidState()) || state.getBlock() instanceof RealisticSandBlock;
+		FluidState fluid = state.getFluidState();
+		return state.isAir()
+			|| RealisticWaterFluid.isRealistic(fluid)
+			|| RealisticLavaFluid.isRealistic(fluid)
+			|| state.getBlock() instanceof RealisticSandBlock;
 	}
 
 	@Unique

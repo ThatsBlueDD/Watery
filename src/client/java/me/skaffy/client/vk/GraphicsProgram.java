@@ -27,7 +27,10 @@ import org.lwjgl.vulkan.VkViewport;
 public final class GraphicsProgram extends Program {
 	public enum Blend { NONE, ADD }
 
-	public record State(int colorFormat, int depthFormat, boolean depthTest, boolean depthWrite, int depthCompare, Blend blend) {
+	public record State(int colorFormat, int depthFormat, boolean depthTest, boolean depthWrite, int depthCompare, Blend blend, int extraColorFormat) {
+		public State(int colorFormat, int depthFormat, boolean depthTest, boolean depthWrite, int depthCompare, Blend blend) {
+			this(colorFormat, depthFormat, depthTest, depthWrite, depthCompare, blend, 0);
+		}
 	}
 
 	public GraphicsProgram(String vert, String frag, Map<String, String> defines, State state, int... types) {
@@ -51,21 +54,30 @@ public final class GraphicsProgram extends Program {
 				.depthTestEnable(state.depthTest)
 				.depthWriteEnable(state.depthWrite)
 				.depthCompareOp(state.depthCompare);
-			VkPipelineColorBlendAttachmentState.Buffer blend = VkPipelineColorBlendAttachmentState.calloc(1, stack).colorWriteMask(0xF);
+			int colorAttachments = state.extraColorFormat != 0 ? 2 : 1;
+			VkPipelineColorBlendAttachmentState.Buffer blend = VkPipelineColorBlendAttachmentState.calloc(colorAttachments, stack);
+			for (int i = 0; i < colorAttachments; i++) {
+				blend.get(i).colorWriteMask(0xF);
+			}
 			if (state.blend == Blend.ADD) {
-				blend.blendEnable(true)
+				blend.get(0).blendEnable(true)
 					.srcColorBlendFactor(VK10.VK_BLEND_FACTOR_ONE).dstColorBlendFactor(VK10.VK_BLEND_FACTOR_ONE).colorBlendOp(VK10.VK_BLEND_OP_ADD)
 					.srcAlphaBlendFactor(VK10.VK_BLEND_FACTOR_ONE).dstAlphaBlendFactor(VK10.VK_BLEND_FACTOR_ONE).alphaBlendOp(VK10.VK_BLEND_OP_ADD);
 			}
-			VkPipelineColorBlendStateCreateInfo colorBlend = VkPipelineColorBlendStateCreateInfo.calloc(stack).sType$Default().pAttachments(blend);
+			VkPipelineColorBlendStateCreateInfo colorBlend = VkPipelineColorBlendStateCreateInfo.calloc(stack).sType$Default()
+				.attachmentCount(colorAttachments)
+				.pAttachments(blend);
 			VkPipelineViewportStateCreateInfo viewport = VkPipelineViewportStateCreateInfo.calloc(stack).sType$Default().viewportCount(1).scissorCount(1);
 			VkPipelineMultisampleStateCreateInfo multisample = VkPipelineMultisampleStateCreateInfo.calloc(stack).sType$Default()
 				.rasterizationSamples(VK10.VK_SAMPLE_COUNT_1_BIT);
 			VkPipelineDynamicStateCreateInfo dynamic = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default()
 				.pDynamicStates(stack.ints(VK10.VK_DYNAMIC_STATE_VIEWPORT, VK10.VK_DYNAMIC_STATE_SCISSOR));
+			int[] colorFormats = state.extraColorFormat != 0
+				? new int[]{state.colorFormat, state.extraColorFormat}
+				: new int[]{state.colorFormat};
 			VkPipelineRenderingCreateInfoKHR rendering = VkPipelineRenderingCreateInfoKHR.calloc(stack).sType$Default()
-				.colorAttachmentCount(1)
-				.pColorAttachmentFormats(stack.ints(state.colorFormat))
+				.colorAttachmentCount(colorFormats.length)
+				.pColorAttachmentFormats(stack.ints(colorFormats))
 				.depthAttachmentFormat(state.depthFormat);
 
 			VkGraphicsPipelineCreateInfo.Buffer info = VkGraphicsPipelineCreateInfo.calloc(1, stack).sType$Default()
@@ -90,8 +102,14 @@ public final class GraphicsProgram extends Program {
 	}
 
 	public static void begin(VkCommandBuffer cb, int width, int height, long colorView, float[] clearColor, long depthView) {
+		begin(cb, width, height, colorView, clearColor, 0L, null, depthView);
+	}
+
+	public static void begin(VkCommandBuffer cb, int width, int height, long colorView, float[] clearColor, long extraColorView, float[] extraClearColor,
+		long depthView) {
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			VkRenderingAttachmentInfo.Buffer color = VkRenderingAttachmentInfo.calloc(1, stack);
+			int colorCount = extraColorView != 0L ? 2 : 1;
+			VkRenderingAttachmentInfo.Buffer color = VkRenderingAttachmentInfo.calloc(colorCount, stack);
 			color.get(0).sType$Default()
 				.imageView(colorView)
 				.imageLayout(VK10.VK_IMAGE_LAYOUT_GENERAL)
@@ -101,6 +119,19 @@ public final class GraphicsProgram extends Program {
 				VkClearValue clear = VkClearValue.calloc(stack);
 				clear.color().float32(0, clearColor[0]).float32(1, clearColor[1]).float32(2, clearColor[2]).float32(3, clearColor[3]);
 				color.get(0).clearValue(clear);
+			}
+			if (extraColorView != 0L) {
+				color.get(1).sType$Default()
+					.imageView(extraColorView)
+					.imageLayout(VK10.VK_IMAGE_LAYOUT_GENERAL)
+					.storeOp(VK10.VK_ATTACHMENT_STORE_OP_STORE)
+					.loadOp(extraClearColor != null ? VK10.VK_ATTACHMENT_LOAD_OP_CLEAR : VK10.VK_ATTACHMENT_LOAD_OP_LOAD);
+				if (extraClearColor != null) {
+					VkClearValue clear = VkClearValue.calloc(stack);
+					clear.color().float32(0, extraClearColor[0]).float32(1, extraClearColor[1]).float32(2, extraClearColor[2])
+						.float32(3, extraClearColor[3]);
+					color.get(1).clearValue(clear);
+				}
 			}
 			VkRect2D area = VkRect2D.calloc(stack);
 			area.extent().set(width, height);

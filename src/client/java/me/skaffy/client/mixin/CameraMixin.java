@@ -1,5 +1,6 @@
 package me.skaffy.client.mixin;
 
+import me.skaffy.fluid.RealisticLavaFluid;
 import me.skaffy.fluid.RealisticWaterFluid;
 import net.minecraft.client.Camera;
 import net.minecraft.world.level.Level;
@@ -20,7 +21,8 @@ public class CameraMixin {
 	@Inject(method = "getFluidInCamera", at = @At("HEAD"), cancellable = true)
 	private void realisticWater$noVanillaFog(CallbackInfoReturnable<FogType> cir) {
 		if (this.initialized && this.level != null
-			&& RealisticWaterFluid.isRealistic(this.level.getFluidState(((Camera) (Object) this).blockPosition()))) {
+			&& (RealisticWaterFluid.isRealistic(this.level.getFluidState(((Camera) (Object) this).blockPosition()))
+				|| RealisticLavaFluid.isRealistic(this.level.getFluidState(((Camera) (Object) this).blockPosition())))) {
 			cir.setReturnValue(FogType.NONE);
 		}
 	}

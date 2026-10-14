@@ -49,5 +49,12 @@ public class RealisticWaterClient implements ClientModInitializer {
 			}
 		};
 		FluidRenderingRegistry.register(ModContent.REALISTIC_WATER, ModContent.FLOWING_REALISTIC_WATER, waterModel, invisible);
+		FluidModel.Unbaked lavaModel = new FluidModel.Unbaked(
+			new Material(Identifier.withDefaultNamespace("block/lava_still")),
+			new Material(Identifier.withDefaultNamespace("block/lava_flow")),
+			new Material(Identifier.withDefaultNamespace("block/lava_overlay")),
+			BlockTintSources.constant(0xFFFFFF)
+		);
+		FluidRenderingRegistry.register(ModContent.REALISTIC_LAVA, ModContent.FLOWING_REALISTIC_LAVA, lavaModel, invisible);
 	}
 }

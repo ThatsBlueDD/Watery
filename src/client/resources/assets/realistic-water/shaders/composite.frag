@@ -5,7 +5,9 @@ layout(binding = 2) uniform sampler2D thicknessTex;
 layout(binding = 3) uniform sampler2D sceneColor;
 layout(binding = 4) uniform sampler2D sceneDepth;
 layout(binding = 5) uniform sampler2D foamTex;
-layout(std430, binding = 6) readonly buffer ViewState { vec4 viewState; };
+layout(binding = 6) uniform sampler2D materialTex;
+layout(std430, binding = 7) readonly buffer ViewState { vec4 viewState; };
+layout(push_constant) uniform Push { float filterMat; } pc;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265;
@@ -112,6 +114,21 @@ vec3 sunSpecular(vec3 n, vec3 V, float footprint) {
     return vec3(1.0, 0.96, 0.88) * min(D * Vis * F * NoL * G.shadeB.x, 30.0) * G.sunDir.w;
 }
 
+vec3 shadeAboveLava(vec2 uv, vec3 n, float fd, float ambient) {
+    vec3 P = viewPosAt(uv, fd);
+    vec3 V = normalize(-P);
+    n = dot(n, V) < 0.0 ? -n : n;
+    float footprint = pixelFootprint(fd);
+    vec3 wrinkled = rippleNormal(n, P, footprint);
+    n = normalize(mix(n, wrinkled, smoothstep(0.0, 0.2, dot(wrinkled, V))));
+    float path = max(texture(thicknessTex, uv).r, 0.0) * G.waterA.y;
+    vec3 glow = G.scatter.rgb * (1.4 + ambient);
+    vec3 core = glow * (1.0 - exp(-G.scatter.w * path * 0.45));
+    float fresnel = pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 2.0);
+    vec3 rim = glow * fresnel * 0.85;
+    return core + rim + sunSpecular(n, V, footprint) * vec3(1.0, 0.65, 0.25);
+}
+
 vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient) {
     vec3 P = viewPosAt(uv, fd);
     vec3 V = normalize(-P);
@@ -196,11 +213,29 @@ void main() {
     vec2 uv = gl_FragCoord.xy * G.screen.zw;
     vec4 g = texture(gbuffer, uv);
     float fd = g.w;
+    float matId = texture(materialTex, uv).r;
+    bool lavaPass = pc.filterMat > 1.5;
     vec4 foam = texture(foamTex, uv);
     float sceneDev = texture(sceneDepth, uv).r;
     float sceneDist = linearDepth(sceneDev);
     bool hasFluid = fd > 0.0 && fd < sceneDist;
     bool underwater = viewState.x > 0.5;
+    bool matTagged = matId >= -0.5;
+    if (hasFluid && matTagged) {
+        if (lavaPass) {
+            if (abs(matId - 2.0) > 0.25) {
+                discard;
+            }
+        } else if (abs(matId) > 0.25) {
+            discard;
+        }
+    } else if (hasFluid && !matTagged) {
+        if (lavaPass) {
+            discard;
+        }
+    } else if (lavaPass) {
+        discard;
+    }
     if (!hasFluid && foam.a < 1e-3 && !underwater) {
         discard;
     }
@@ -209,10 +244,10 @@ void main() {
     float outDepth = sceneDev;
 
     if (underwater) {
-        vec3 deep = G.scatter.rgb * ambient;
+        vec3 deep = lavaPass ? G.scatter.rgb * (1.2 + ambient) : G.scatter.rgb * ambient;
         float visible = min(sceneDist, 160.0);
         if (hasFluid) {
-            color = shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
+            color = lavaPass ? deep * 1.35 : shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
             visible = fd;
             vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
             outDepth = clip.z / clip.w;
@@ -220,7 +255,7 @@ void main() {
         float fog = G.scatter.w * G.misc.x;
         color = color * exp(-G.absorb.rgb * visible * G.misc.x) + deep * (1.0 - exp(-fog * visible));
     } else if (hasFluid) {
-        color = shadeAboveWater(uv, g.xyz, fd, sceneDist, ambient);
+        color = lavaPass ? shadeAboveLava(uv, g.xyz, fd, ambient) : shadeAboveWater(uv, g.xyz, fd, sceneDist, ambient);
         vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
         outDepth = clip.z / clip.w;
     }

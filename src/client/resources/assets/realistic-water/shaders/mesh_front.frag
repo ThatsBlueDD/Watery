@@ -5,6 +5,7 @@ layout(location = 0) in vec3 vView;
 layout(location = 1) in vec3 vNormal;
 layout(location = 2) in float vWall;
 layout(location = 0) out vec4 outG;
+layout(location = 1) out float outMat;
 
 void main() {
     float dist = -vView.z;
@@ -15,4 +16,5 @@ void main() {
         discard;
     }
     outG = vec4(normalize(vNormal), dist);
+    outMat = G.matA.x;
 }

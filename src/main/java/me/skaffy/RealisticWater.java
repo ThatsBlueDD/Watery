@@ -1,7 +1,9 @@
 package me.skaffy;
 
+import me.skaffy.net.LavaSyncPayload;
 import me.skaffy.net.RemoveAllWaterPayload;
 import me.skaffy.net.SandSyncPayload;
+import me.skaffy.net.SyncMaterial;
 import me.skaffy.net.WaterSyncPayload;
 import net.minecraft.network.chat.Component;
 import net.fabricmc.api.ModInitializer;
@@ -23,6 +25,7 @@ public class RealisticWater implements ModInitializer {
 		ModContent.init();
 		PayloadTypeRegistry.serverboundPlay().register(WaterSyncPayload.TYPE, WaterSyncPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SandSyncPayload.TYPE, SandSyncPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(LavaSyncPayload.TYPE, LavaSyncPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(WaterSyncPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
@@ -34,12 +37,17 @@ public class RealisticWater implements ModInitializer {
 				context.server().execute(() -> payload.apply(context.player()));
 			}
 		});
+		ServerPlayNetworking.registerGlobalReceiver(LavaSyncPayload.TYPE, (payload, context) -> {
+			if (isAuthority(context.server(), context.player())) {
+				context.server().execute(() -> payload.apply(context.player()));
+			}
+		});
 		ServerPlayNetworking.registerGlobalReceiver(RemoveAllWaterPayload.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			if (isAuthority(context.server(), player)) {
 				context.server().execute(() -> {
 					int removed = payload.apply(player);
-					player.sendSystemMessage(Component.literal("Removed " + removed + " realistic " + (payload.sand() ? "sand" : "water") + " blocks"));
+					player.sendSystemMessage(Component.literal("Removed " + removed + " realistic " + SyncMaterial.label(payload.material()) + " blocks"));
 				});
 			}
 		});

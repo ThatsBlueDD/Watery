@@ -1,7 +1,9 @@
 package me.skaffy;
 
+import me.skaffy.block.RealisticLavaBlock;
 import me.skaffy.block.RealisticSandBlock;
 import me.skaffy.block.RealisticWaterBlock;
+import me.skaffy.fluid.RealisticLavaFluid;
 import me.skaffy.fluid.RealisticWaterFluid;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.minecraft.core.Registry;
@@ -46,6 +48,31 @@ public final class ModContent {
 	public static final Item REALISTIC_WATER_BUCKET = Registry.register(BuiltInRegistries.ITEM, REALISTIC_WATER_BUCKET_KEY, new BucketItem(
 		REALISTIC_WATER, new Item.Properties().craftRemainder(Items.BUCKET).stacksTo(1).setId(REALISTIC_WATER_BUCKET_KEY)));
 
+	public static final FlowingFluid FLOWING_REALISTIC_LAVA = Registry.register(
+		BuiltInRegistries.FLUID, RealisticWater.id("flowing_realistic_lava"), new RealisticLavaFluid.Flowing());
+	public static final FlowingFluid REALISTIC_LAVA = Registry.register(
+		BuiltInRegistries.FLUID, RealisticWater.id("realistic_lava"), new RealisticLavaFluid.Source());
+
+	public static final ResourceKey<Block> REALISTIC_LAVA_BLOCK_KEY = ResourceKey.create(Registries.BLOCK, RealisticWater.id("realistic_lava"));
+	public static final Block REALISTIC_LAVA_BLOCK = Registry.register(BuiltInRegistries.BLOCK, REALISTIC_LAVA_BLOCK_KEY, new RealisticLavaBlock(
+		REALISTIC_LAVA,
+		BlockBehaviour.Properties.of()
+			.mapColor(MapColor.FIRE)
+			.replaceable()
+			.noCollision()
+			.strength(100.0F)
+			.pushReaction(PushReaction.POPPED)
+			.noLootTable()
+			.liquid()
+			.lightLevel(state -> 15)
+			.sound(SoundType.EMPTY)
+			.setId(REALISTIC_LAVA_BLOCK_KEY)
+	));
+
+	public static final ResourceKey<Item> REALISTIC_LAVA_BUCKET_KEY = ResourceKey.create(Registries.ITEM, RealisticWater.id("realistic_lava_bucket"));
+	public static final Item REALISTIC_LAVA_BUCKET = Registry.register(BuiltInRegistries.ITEM, REALISTIC_LAVA_BUCKET_KEY, new BucketItem(
+		REALISTIC_LAVA, new Item.Properties().craftRemainder(Items.BUCKET).stacksTo(1).setId(REALISTIC_LAVA_BUCKET_KEY)));
+
 	public static final ResourceKey<Block> REALISTIC_SAND_KEY = ResourceKey.create(Registries.BLOCK, RealisticWater.id("realistic_sand"));
 	public static final Block REALISTIC_SAND = Registry.register(BuiltInRegistries.BLOCK, REALISTIC_SAND_KEY, new RealisticSandBlock(
 		BlockBehaviour.Properties.of()
@@ -74,7 +101,10 @@ public final class ModContent {
 
 	static void init() {
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES)
-			.register(output -> output.insertAfter(Items.WATER_BUCKET, REALISTIC_WATER_BUCKET));
+			.register(output -> {
+				output.insertAfter(Items.WATER_BUCKET, REALISTIC_WATER_BUCKET);
+				output.insertAfter(Items.LAVA_BUCKET, REALISTIC_LAVA_BUCKET);
+			});
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.NATURAL_BLOCKS)
 			.register(output -> output.insertAfter(Items.SAND, REALISTIC_SAND_ITEM));
 	}
