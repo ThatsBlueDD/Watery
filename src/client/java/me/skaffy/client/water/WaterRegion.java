@@ -12,6 +12,7 @@ import me.skaffy.client.vk.Vk;
 import me.skaffy.client.vk.VkBuf;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LightLayer;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VK10;
@@ -35,6 +36,7 @@ public final class WaterRegion implements AutoCloseable {
 	static final long ARGS_FLUID_DRAW = 48;
 	static final long ARGS_WW_DRAW = 64;
 	static final long ARGS_GRAIN_DRAW = 80;
+	static final long ARGS_DROPLET_DRAW = 96;
 	static final int AABB_BIAS = 1 << 20;
 	static final int MAX_REMOVE = 16;
 	private static final int INITIAL_PARTICLES = 262_144;
@@ -104,7 +106,10 @@ public final class WaterRegion implements AutoCloseable {
 				new ComputeProgram("mpm_p2g.comp", U, S, S, S, S, S),
 				new ComputeProgram("mpm_grid.comp", U, S, S),
 				new ComputeProgram("mpm_g2p.comp", U, S, S, S, S, S, S, S),
-				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S)
+				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S),
+				new ComputeProgram("viscosity.comp", U, S, S, S),
+				new ComputeProgram("blast.comp", U, S, S),
+				new ComputeProgram("blast.comp", Map.of("MPM", "1"), U, S, S, S)
 			};
 		}
 		return programs;
@@ -159,6 +164,7 @@ public final class WaterRegion implements AutoCloseable {
 	private @Nullable VkBuf mpmGrid;
 	private final VkBuf[] mpmState = new VkBuf[2];
 	@Nullable VkBuf surfaceParticles;
+	@Nullable VkBuf dropletIds;
 	PressureSolver solver;
 	SurfaceMesher mesher;
 	private boolean freshGrid;
@@ -207,6 +213,13 @@ public final class WaterRegion implements AutoCloseable {
 	int lastWhitewaterCount;
 	float lastMaxSpeed;
 	private int emittedSinceReadback;
+	private float calmSeconds;
+	private @Nullable VkBuf light;
+	private int[] lightMirror = new int[0];
+	private int @Nullable [] lightWindow;
+	private int lightCursor;
+	private static final int LIGHT_BLOCKS_PER_FRAME = 4096;
+	static final int LIGHT_OPAQUE = 0x100;
 
 	WaterRegion(int id, int res, Material material) {
 		this.id = id;
@@ -221,6 +234,8 @@ public final class WaterRegion implements AutoCloseable {
 		}
 		if (material.isGranular()) {
 			this.surfaceParticles = VkBuf.device((long) this.fluidCapacity * SURFACE_PARTICLE_BYTES, 0);
+		} else {
+			this.dropletIds = VkBuf.device((long) this.fluidCapacity * 4L, 0);
 		}
 		this.counters = VkBuf.device(64, 0);
 		this.args = VkBuf.device(128, VkBuf.INDIRECT);
@@ -572,6 +587,9 @@ public final class WaterRegion implements AutoCloseable {
 				this.mpmState[1] = grown[1];
 				Vk.destroyLater(this.surfaceParticles);
 				this.surfaceParticles = VkBuf.device((long) next * SURFACE_PARTICLE_BYTES, 0);
+			} else {
+				Vk.destroyLater(this.dropletIds);
+				this.dropletIds = VkBuf.device((long) next * 4L, 0);
 			}
 			this.fluidCapacity = next;
 		}
@@ -649,14 +667,96 @@ public final class WaterRegion implements AutoCloseable {
 		}
 	}
 
-	boolean dormant() {
-		return this.material.isGranular() && this.initialized && this.lastAwake == 0 && this.lastAwakeFrame > this.wakeFrame
+	void updateLight(ClientLevel level) {
+		if (!this.hasWindow) {
+			return;
+		}
+		int[] window = {this.ox, this.oy, this.oz, this.sx, this.sy, this.sz};
+		int count = this.sx * this.sy * this.sz;
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		if (this.light == null || !java.util.Arrays.equals(window, this.lightWindow)) {
+			int[] fresh = new int[count];
+			int[] old = this.lightWindow;
+			for (int i = 0; i < count; i++) {
+				int x = i % this.sx;
+				int y = (i / this.sx) % this.sy;
+				int z = i / (this.sx * this.sy);
+				if (old != null) {
+					int px = this.ox + x - old[0];
+					int py = this.oy + y - old[1];
+					int pz = this.oz + z - old[2];
+					if (px >= 0 && py >= 0 && pz >= 0 && px < old[3] && py < old[4] && pz < old[5]) {
+						fresh[i] = this.lightMirror[px + old[3] * (py + old[4] * pz)];
+						continue;
+					}
+				}
+				fresh[i] = lightAt(level, pos.set(this.ox + x, this.oy + y, this.oz + z));
+			}
+			this.lightMirror = fresh;
+			this.lightWindow = window;
+			this.lightCursor = 0;
+			if (this.light != null) {
+				Vk.destroyLater(this.light);
+			}
+			this.light = VkBuf.upload(Math.max(count, 1) * 4L, VkBuf.STORAGE);
+			this.light.mapped().asIntBuffer().put(0, fresh);
+			this.light.flush(0, count * 4L);
+			return;
+		}
+		int n = Math.min(count, LIGHT_BLOCKS_PER_FRAME);
+		int start = this.lightCursor;
+		for (int k = 0; k < n; k++) {
+			int i = (start + k) % count;
+			int x = i % this.sx;
+			int y = (i / this.sx) % this.sy;
+			int z = i / (this.sx * this.sy);
+			this.lightMirror[i] = lightAt(level, pos.set(this.ox + x, this.oy + y, this.oz + z));
+		}
+		this.lightCursor = (start + n) % count;
+		int first = Math.min(n, count - start);
+		this.light.mapped().asIntBuffer().put(start, this.lightMirror, start, first);
+		this.light.flush(start * 4L, first * 4L);
+		if (first < n) {
+			this.light.mapped().asIntBuffer().put(0, this.lightMirror, 0, n - first);
+			this.light.flush(0, (n - first) * 4L);
+		}
+	}
+
+	private static int lightAt(ClientLevel level, BlockPos pos) {
+		int block = level.getBrightness(LightLayer.BLOCK, pos);
+		int sky = level.getBrightness(LightLayer.SKY, pos);
+		int opaque = level.getBlockState(pos).canOcclude() ? LIGHT_OPAQUE : 0;
+		return block | sky << 4 | opaque;
+	}
+
+	VkBuf light() {
+		return this.light;
+	}
+
+	boolean dormant(boolean fed) {
+		boolean settled = this.material.isGranular()
+			? this.lastAwake == 0
+			: WaterSettings.fluidRestTime > 0.0F && !fed && this.calmSeconds >= WaterSettings.fluidRestTime
+				&& this.lastWhitewaterCount <= WaterSettings.fluidRestWhitewater;
+		return settled && this.initialized && this.lastAwakeFrame > this.wakeFrame
 			&& this.pending.isEmpty() && this.removals.isEmpty() && this.absorbQueue.isEmpty() && this.pendingShift == null
 			&& !this.solidsFullUpload && this.solidPatches.isEmpty() && !this.freshGrid;
 	}
 
+	void trackCalm(float seconds, int steps) {
+		if (steps <= 0 || this.material.isGranular()) {
+			return;
+		}
+		if (this.lastMaxSpeed / this.res < WaterSettings.fluidRestSpeed) {
+			this.calmSeconds += seconds;
+		} else {
+			this.calmSeconds = 0.0F;
+		}
+	}
+
 	void wake(int frame) {
 		this.wakeFrame = frame;
+		this.calmSeconds = 0.0F;
 	}
 
 	boolean takeFieldStale() {
@@ -672,13 +772,13 @@ public final class WaterRegion implements AutoCloseable {
 
 	private final List<WaterRegion> absorbQueue = new ArrayList<>();
 
-	void record(VkCommandBuffer cb, Desc ubo, int steps, int numSources, int frame, VkBuf frameView, int numRemovals) {
+	void record(VkCommandBuffer cb, Desc ubo, int steps, int numSources, int frame, VkBuf frameView, int numRemovals, List<float[]> blasts) {
 		int slot = Vk.ringSlot();
 		int[] box = this.box;
 		ComputeProgram[] p = programs();
-		if (!this.pending.isEmpty() || numRemovals > 0 || !this.absorbQueue.isEmpty() || this.pendingShift != null || this.freshGrid
+		if (!this.pending.isEmpty() || numRemovals > 0 || !blasts.isEmpty() || !this.absorbQueue.isEmpty() || this.pendingShift != null || this.freshGrid
 			|| this.solidsFullUpload || !this.solidPatches.isEmpty()) {
-			this.wakeFrame = frame;
+			this.wake(frame);
 		}
 		if (steps > 0) {
 			this.fieldStale = true;
@@ -763,13 +863,31 @@ public final class WaterRegion implements AutoCloseable {
 			}
 			this.recentEmitExpiry = frame + Vk.FRAME_RING + 4;
 			this.emittedSinceReadback += total[0];
+			this.fieldStale = true;
 			done.clear();
 		}
 		if (numRemovals > 0 && this.initialized) {
+			this.fieldStale = true;
 			p[15].bind(cb, ubo, Desc.ssbo(this.particles[this.cur]), Desc.ssbo(this.counters));
 			p[15].push(cb, C_FLUID + this.cur);
 			p[15].dispatchIndirect(cb, this.args, ARGS_FLUID_DISPATCH);
 			Vk.barrier(cb);
+		}
+		if (!blasts.isEmpty() && this.initialized) {
+			this.fieldStale = true;
+			boolean mpm = this.material.isGranular();
+			ComputeProgram blast = p[mpm ? 25 : 24];
+			for (float[] b : blasts) {
+				if (mpm) {
+					blast.bind(cb, ubo, Desc.ssbo(this.particles[this.cur]), Desc.ssbo(this.counters), Desc.ssbo(this.mpmState[this.cur]));
+				} else {
+					blast.bind(cb, ubo, Desc.ssbo(this.particles[this.cur]), Desc.ssbo(this.counters));
+				}
+				blast.push(cb, C_FLUID + this.cur, this.seed++, 0, 0, Program.f(b[0]), Program.f(b[1]), Program.f(b[2]), Program.f(b[3]),
+					Program.f(b[4]), Program.f(b[5]), Program.f(b[6]), 0);
+				blast.dispatchIndirect(cb, this.args, ARGS_FLUID_DISPATCH);
+				Vk.barrier(cb);
+			}
 		}
 
 		for (int s = 0; s < steps; s++) {
@@ -885,6 +1003,10 @@ public final class WaterRegion implements AutoCloseable {
 		p[5].dispatch(cb, faceGroups, 1, 1);
 		Vk.barrier(cb);
 
+		if (this.material == Material.SLIME && WaterSettings.slimeViscosity > 0.0F && WaterSettings.slimeViscosityIterations > 0) {
+			this.viscosity(cb, ubo, faceGroups);
+		}
+
 		p[6].bind(cb, ubo, Desc.ssbo(this.vel), Desc.ssbo(this.cellFlags), Desc.ssbo(this.cellDens), Desc.ssbo(this.divergence),
 			Desc.ssbo(this.pressure));
 		p[6].dispatch(cb, cellGroups, 1, 1);
@@ -932,6 +1054,20 @@ public final class WaterRegion implements AutoCloseable {
 	}
 
 	private boolean pendingShiftHappened;
+
+	private void viscosity(VkCommandBuffer cb, Desc ubo, int faceGroups) {
+		ComputeProgram visc = programs()[23];
+		int sweeps = Math.max(2, WaterSettings.slimeViscosityIterations);
+		float nu = WaterSettings.slimeViscosity * this.res * this.res;
+		for (int k = 0; k < sweeps; k++) {
+			int src = k == 0 ? -1 : ((k - 1) % 2) * this.numFaces;
+			int dst = k == sweeps - 1 ? -1 : (k % 2) * this.numFaces;
+			visc.bind(cb, ubo, Desc.ssbo(this.vel), Desc.ssbo(this.accum), Desc.ssbo(this.cellFlags));
+			visc.push(cb, src, dst, 0, 0, Program.f(nu), 0, 0, 0);
+			visc.dispatch(cb, faceGroups, 1, 1);
+			Vk.barrier(cb);
+		}
+	}
 
 	private void mpmStep(VkCommandBuffer cb, Desc ubo, int[] box) {
 		ComputeProgram[] p = programs();
@@ -988,6 +1124,14 @@ public final class WaterRegion implements AutoCloseable {
 		return this.particles[this.cur];
 	}
 
+	VkBuf spareParticles() {
+		return this.particles[1 - this.cur];
+	}
+
+	void useSpareParticles() {
+		this.cur = 1 - this.cur;
+	}
+
 	VkBuf currentWhitewater() {
 		return this.whitewater[this.wwCur];
 	}
@@ -1001,7 +1145,7 @@ public final class WaterRegion implements AutoCloseable {
 		this.releaseGrid();
 		for (AutoCloseable c : new AutoCloseable[]{
 			this.particles[0], this.particles[1], this.whitewater[0], this.whitewater[1], this.mpmState[0], this.mpmState[1], this.surfaceParticles,
-			this.counters,
+			this.dropletIds, this.counters, this.light,
 			this.args, this.emitterRing,
 			this.statsReadback, this.fillBuffer, this.fillReadback[0], this.fillReadback[1], this.fillReadback[2]
 		}) {

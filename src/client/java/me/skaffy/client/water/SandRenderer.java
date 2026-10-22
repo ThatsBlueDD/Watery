@@ -1,14 +1,19 @@
 package me.skaffy.client.water;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import me.skaffy.RealisticWater;
+import me.skaffy.client.shader.ShaderRenderer;
 import me.skaffy.client.vk.ComputeProgram;
 import me.skaffy.client.vk.Desc;
 import me.skaffy.client.vk.GraphicsProgram;
+import me.skaffy.client.vk.Sampler;
 import me.skaffy.client.vk.Vk;
 import me.skaffy.client.vk.VkBuf;
 import me.skaffy.client.vk.VkTex;
@@ -20,25 +25,29 @@ import org.lwjgl.vulkan.VkCommandBuffer;
 final class SandRenderer implements AutoCloseable {
 	private static final Identifier SAND_TEXTURE = Identifier.withDefaultNamespace("textures/block/sand.png");
 
-	private final GraphicsProgram grains;
+	private final Map<Integer, GraphicsProgram> grains = new HashMap<>();
 	private final ComputeProgram cull;
 	private final VkBuf texture;
+	private final VkTex noShadow = new VkTex(VkTex.R32F, 1, 1, VkTex.COLOR | VkTex.SAMPLED);
+	private final Sampler nearest = new Sampler(false);
+	private final Sampler linear = new Sampler(true);
 
 	SandRenderer() {
 		int U = Desc.UBO;
 		int S = Desc.SSBO;
-		GraphicsProgram.State opaque = new GraphicsProgram.State(VkTex.RGBA8, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER,
-			GraphicsProgram.Blend.NONE);
-		this.grains = new GraphicsProgram("grain.vert", "grain.frag", Map.of(), opaque, U, S, S);
 		this.cull = new ComputeProgram("grain_cull.comp", U, S, S, S, S, S);
 		this.texture = loadTexture();
 	}
 
 	private static VkBuf loadTexture() {
+		return loadTexture(SAND_TEXTURE, 0xFFDBCFA3);
+	}
+
+	static VkBuf loadTexture(Identifier id, int fallback) {
 		int[] argb;
 		int w;
 		int h;
-		try (InputStream in = Minecraft.getInstance().getResourceManager().open(SAND_TEXTURE); NativeImage image = NativeImage.read(in)) {
+		try (InputStream in = Minecraft.getInstance().getResourceManager().open(id); NativeImage image = NativeImage.read(in)) {
 			w = image.getWidth();
 			h = Math.min(image.getHeight(), w);
 			argb = new int[w * h];
@@ -48,10 +57,10 @@ final class SandRenderer implements AutoCloseable {
 				}
 			}
 		} catch (Exception e) {
-			RealisticWater.LOGGER.warn("Couldn't read {}, using a flat sand colour", SAND_TEXTURE, e);
+			RealisticWater.LOGGER.warn("Couldn't read {}, using a flat colour", id, e);
 			w = 1;
 			h = 1;
-			argb = new int[]{0xFFDBCFA3};
+			argb = new int[]{fallback};
 		}
 		long r = 0;
 		long g = 0;
@@ -74,11 +83,22 @@ final class SandRenderer implements AutoCloseable {
 		return buf;
 	}
 
-	void record(VkCommandBuffer cb, List<WaterRenderer.Body> bodies, int width, int height, long mainColorView, long mainDepthView) {
+	private GraphicsProgram grains(int colorFormat) {
+		return this.grains.computeIfAbsent(colorFormat, format -> new GraphicsProgram("grain.vert", "grain.frag", Map.of(),
+			new GraphicsProgram.State(format, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER, GraphicsProgram.Blend.NONE), Desc.UBO, Desc.SSBO, Desc.SSBO,
+			Desc.TEX, Desc.SSBO, Desc.TEX, Desc.TEX, Desc.TEX, Desc.TEX));
+	}
+
+	void record(VkCommandBuffer cb, List<WaterRenderer.Body> bodies, int width, int height, int colorFormat, long mainColorView, long mainDepthView,
+		WaterRenderer.LightViews lights) {
+		GraphicsProgram grains = this.grains(colorFormat);
+		GpuTextureView shadowView = ShaderRenderer.shadowDepth();
+		Desc shadow = Desc.tex(shadowView instanceof VulkanGpuTextureView vulkan ? vulkan.vkImageView() : this.noShadow.view, this.nearest.handle);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
 			if (r.takeFieldStale()) {
-				r.mesher.buildField(cb, body.ubo(), r.currentParticles(), r.counters, WaterRegion.C_FLUID + r.cur, r.args, r.mesher.fineBox(r.box), false);
+				r.mesher.buildField(cb, body.ubo(), r.currentParticles(), r.counters, WaterRegion.C_FLUID + r.cur, r.args, r.mesher.fineBox(r.box), false,
+					null, 0);
 			}
 			r.args.fill(cb, WaterRegion.ARGS_GRAIN_DRAW + 4, 4, 0);
 		}
@@ -94,16 +114,21 @@ final class SandRenderer implements AutoCloseable {
 		GraphicsProgram.begin(cb, width, height, mainColorView, null, mainDepthView);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
-			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.texture));
-			this.grains.drawIndirect(cb, r.args, WaterRegion.ARGS_GRAIN_DRAW);
+			grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.texture), shadow, Desc.ssbo(r.light()),
+				Desc.tex(lights.lightmap(), this.linear.handle), Desc.tex(lights.colorA(), this.linear.handle), Desc.tex(lights.colorB(), this.linear.handle),
+				Desc.tex(lights.colorTint(), this.linear.handle));
+			grains.drawIndirect(cb, r.args, WaterRegion.ARGS_GRAIN_DRAW);
 		}
 		GraphicsProgram.end(cb);
 	}
 
 	@Override
 	public void close() {
-		this.grains.close();
+		this.grains.values().forEach(GraphicsProgram::close);
 		this.cull.close();
 		this.texture.close();
+		this.noShadow.close();
+		this.nearest.close();
+		this.linear.close();
 	}
 }

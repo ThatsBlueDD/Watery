@@ -3,6 +3,7 @@ package me.skaffy.client.mixin;
 import me.skaffy.block.RealisticSandBlock;
 import me.skaffy.client.water.WaterWorld;
 import me.skaffy.fluid.RealisticLavaFluid;
+import me.skaffy.fluid.RealisticSlimeFluid;
 import me.skaffy.fluid.RealisticWaterFluid;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -22,6 +23,7 @@ public class ClientLevelMixin {
 		return state.isAir()
 			|| RealisticWaterFluid.isRealistic(fluid)
 			|| RealisticLavaFluid.isRealistic(fluid)
+			|| RealisticSlimeFluid.isRealistic(fluid)
 			|| state.getBlock() instanceof RealisticSandBlock;
 	}
 

@@ -23,6 +23,8 @@ public final class WaterCommands {
 
 	public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext context) {
 		dispatcher.register(literal("water")
+			.executes(WaterCommands::openMenu)
+			.then(literal("gui").executes(WaterCommands::openMenu))
 			.then(literal("stats").executes(c -> {
 				c.getSource().sendFeedback(Component.literal(WaterWorld.get().statsLine()));
 				return 1;
@@ -46,6 +48,9 @@ public final class WaterCommands {
 			.then(literal("lava")
 				.executes(c -> ball(c, 3, Material.LAVA))
 				.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> ball(c, IntegerArgumentType.getInteger(c, "size"), Material.LAVA))))
+			.then(literal("slime")
+				.executes(c -> ball(c, 2, Material.SLIME))
+				.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> ball(c, IntegerArgumentType.getInteger(c, "size"), Material.SLIME))))
 			.then(literal("remove")
 				.executes(c -> {
 					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.WATER);
@@ -60,6 +65,11 @@ public final class WaterCommands {
 				.then(literal("lava").executes(c -> {
 					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.LAVA);
 					c.getSource().sendFeedback(Component.literal("Removing all realistic lava around you (springs included)"));
+					return 1;
+				}))
+				.then(literal("slime").executes(c -> {
+					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.SLIME);
+					c.getSource().sendFeedback(Component.literal("Removing all realistic slime around you"));
 					return 1;
 				})))
 			.then(literal("set")
@@ -87,12 +97,12 @@ public final class WaterCommands {
 		double half = size * 0.5;
 		WaterWorld.get().addEmitter(new WaterRegion.Emitter(
 			center.x - half, center.y - half, center.z - half, center.x + half, center.y + half, center.z + half, 0, 0, 0), material);
-		String name = switch (material) {
-			case SAND -> "sand";
-			case LAVA -> "lava";
-			default -> "water";
-		};
-		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + name));
+		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + material.label()));
+		return 1;
+	}
+
+	private static int openMenu(CommandContext<FabricClientCommandSource> c) {
+		WaterSettingsScreen.openNextTick();
 		return 1;
 	}
 
@@ -107,6 +117,7 @@ public final class WaterCommands {
 		String value = StringArgumentType.getString(c, "value");
 		try {
 			c.getSource().sendFeedback(Component.literal(name + " = " + WaterSettings.set(name, value)));
+			WaterSettings.save();
 		} catch (ReflectiveOperationException | NumberFormatException e) {
 			c.getSource().sendError(Component.literal("Unknown setting or bad value: " + name));
 		}

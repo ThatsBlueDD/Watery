@@ -1,7 +1,15 @@
 package me.skaffy.client.water;
 
 import me.skaffy.ModSettings;
+import me.skaffy.RealisticWater;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
+import net.fabricmc.loader.api.FabricLoader;
 import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.TreeMap;
@@ -16,6 +24,8 @@ public final class WaterSettings {
 	public static int renderMaxStepsPerFrame = 64;
 	public static int cgIterations = 5;
 	public static int mgCoarseSweeps = 12;
+	public static int solverBottomCells = 8192;
+	public static int solverSmallCells = 24000;
 	public static int extrapolationLayers = 4;
 	public static float flipRatio = 0.99F;
 	public static float volumeCorrection = 2.0F;
@@ -44,6 +54,8 @@ public final class WaterSettings {
 	public static float filmFriction = 40.0F;
 	public static float filmDepth = 0.08F;
 	public static boolean sheetFill = false;
+	public static boolean wallFill = true;
+	public static float wallFillReach = 1.0F;
 	public static float sheetSmoothing = 2.0F;
 	public static float strandedTime = 1.5F;
 	public static int strandedNeighbors = 12;
@@ -54,6 +66,14 @@ public final class WaterSettings {
 	public static float surfaceIso = 0.5F;
 	public static float dropletThreshold = 0.35F;
 	public static float nearCull = 0.05F;
+	public static boolean surfaceGather = true;
+	public static boolean sortParticles = true;
+	public static boolean surfaceInteriorSkip = true;
+	public static int surfaceInteriorCount = 4;
+
+	public static float fluidRestSpeed = 0.15F;
+	public static float fluidRestTime = 1.5F;
+	public static int fluidRestWhitewater = 32;
 
 	public static float particleRadius = 0.4F;
 	public static float thicknessScale = 1.0F;
@@ -133,12 +153,127 @@ public final class WaterSettings {
 	public static boolean lavaFlowSounds = true;
 	public static boolean lavaIgniteFlammables = true;
 
+	public static int slimeResolution = 4;
+	public static float slimeFlipRatio = 0.9F;
+	public static float slimeMaxSpeed = 3.0F;
+	public static float slimeVolumeCorrection = 6.0F;
+	public static float slimeViscosity = 1.5F;
+	public static int slimeViscosityIterations = 4;
+	public static float slimeAdhesion = 18.0F;
+	public static float slimeEntityStick = 0.85F;
+	public static float slimeRestSpeed = 0.6F;
+	public static float slimeRestTime = 0.1F;
+	public static float slimeWakeSpeed = 1.5F;
+	public static float slimeFilmFriction = 220.0F;
+	public static float slimeFilmDepth = 0.15F;
+	public static float slimeStrandedTime = 8.0F;
+	public static int slimeStrandedNeighbors = 4;
+	public static float slimeOpacity = 0.85F;
+	public static float slimeBrightness = 1.0F;
+	public static float slimeSurfaceSmoothing = 0.85F;
+	public static float slimeInsideOpacity = 0.92F;
+	public static float slimeFogDistance = 0.5F;
+	public static boolean slimeSounds = true;
+
+	public static boolean tntReactions = true;
+	public static float tntBlastSpeed = 14.0F;
+	public static float tntBlastReach = 2.0F;
+	public static float tntUpwardBias = 0.35F;
+	public static float tntScatter = 0.25F;
+
+	public static float shaderLightScale = 2.5F;
+	public static float shaderSpecularCap = 16.0F;
+	public static float shaderShadowBias = 0.0004F;
+	public static boolean shaderSkyFromScreen = true;
+	public static boolean shadowStagger = true;
+	public static float sandShaderSun = 3.4F;
+	public static float sandShaderSky = 0.9F;
+
 	public static String ffmpeg = "";
 	public static boolean renderFreezeWorld = true;
 	public static boolean renderSteadyPreview = true;
 	public static float renderCameraSmoothing = 0.12F;
 
+	private static final Map<String, String> DEFAULTS = snapshot();
+
 	private WaterSettings() {
+	}
+
+	private static Map<String, String> snapshot() {
+		Map<String, String> out = new TreeMap<>();
+		for (Map.Entry<String, Field> e : fields().entrySet()) {
+			try {
+				out.put(e.getKey(), String.valueOf(e.getValue().get(null)));
+			} catch (IllegalAccessException ignored) {
+			}
+		}
+		return out;
+	}
+
+	public static String defaultValue(String name) {
+		return DEFAULTS.getOrDefault(name, "");
+	}
+
+	public static String get(String name) throws ReflectiveOperationException {
+		Field f = fields().get(name);
+		if (f == null) {
+			throw new NoSuchFieldException(name);
+		}
+		return String.valueOf(f.get(null));
+	}
+
+	private static Path file() {
+		return FabricLoader.getInstance().getConfigDir().resolve("realistic-water.properties");
+	}
+
+	public static void load() {
+		Path file = file();
+		if (!Files.exists(file)) {
+			return;
+		}
+		Properties props = new Properties();
+		try (Reader in = Files.newBufferedReader(file)) {
+			props.load(in);
+		} catch (IOException e) {
+			RealisticWater.LOGGER.warn("Couldn't read {}", file, e);
+			return;
+		}
+		for (String name : props.stringPropertyNames()) {
+			try {
+				String value = props.getProperty(name);
+				set(name, value.isEmpty() ? "-" : value);
+			} catch (ReflectiveOperationException | NumberFormatException e) {
+				RealisticWater.LOGGER.warn("Skipping setting {} from {}", name, file);
+			}
+		}
+	}
+
+	public static void save() {
+		Properties props = new Properties();
+		for (String name : fields().keySet()) {
+			try {
+				String value = get(name);
+				if (!value.equals(defaultValue(name))) {
+					props.setProperty(name, value);
+				}
+			} catch (ReflectiveOperationException ignored) {
+			}
+		}
+		Path file = file();
+		try {
+			Files.createDirectories(file.getParent());
+			try (Writer out = Files.newBufferedWriter(file)) {
+				props.store(out, "Realistic Water settings that differ from the defaults (edit in game with /water)");
+			}
+		} catch (IOException e) {
+			RealisticWater.LOGGER.warn("Couldn't save {}", file, e);
+		}
+	}
+
+	public static void reset(String name) throws ReflectiveOperationException {
+		if (DEFAULTS.containsKey(name)) {
+			set(name, DEFAULTS.get(name).isEmpty() ? "-" : DEFAULTS.get(name));
+		}
 	}
 
 	public static Map<String, Field> fields() {

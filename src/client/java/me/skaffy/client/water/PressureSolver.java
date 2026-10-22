@@ -45,6 +45,9 @@ final class PressureSolver implements AutoCloseable {
 	private final ComputeProgram cgUpdate;
 	private final ComputeProgram cgDirection;
 	private final ComputeProgram coarse;
+	private final ComputeProgram bottom;
+	private final ComputeProgram whole;
+	private int bottomLevel;
 
 	private static final class Programs {
 		final ComputeProgram flags0;
@@ -59,6 +62,8 @@ final class PressureSolver implements AutoCloseable {
 		final ComputeProgram cgUpdate;
 		final ComputeProgram cgDirection;
 		final ComputeProgram coarse;
+		final ComputeProgram bottom;
+		final ComputeProgram whole;
 
 		Programs() {
 			int U = Desc.UBO;
@@ -75,12 +80,14 @@ final class PressureSolver implements AutoCloseable {
 			this.cgUpdate = new ComputeProgram("cg_update.comp", U, S, S, S, S, S);
 			this.cgDirection = new ComputeProgram("cg_direction.comp", U, S, S, S);
 			this.coarse = new ComputeProgram("mg_coarse.comp", U, S, S, S);
+			this.bottom = new ComputeProgram("mg_bottom.comp", U, S, S, S, S, S);
+			this.whole = new ComputeProgram("mg_solve_small.comp", U, S, S, S, S, S, S, S, S, S, S);
 		}
 
 		void close() {
 			for (ComputeProgram p : new ComputeProgram[]{
 				this.flags0, this.coarsen, this.smooth, this.restrict, this.prolong, this.cgInit, this.cgApply, this.cgDot, this.cgReduce,
-				this.cgUpdate, this.cgDirection, this.coarse
+				this.cgUpdate, this.cgDirection, this.coarse, this.bottom, this.whole
 			}) {
 				p.close();
 			}
@@ -146,6 +153,8 @@ final class PressureSolver implements AutoCloseable {
 		this.cgUpdate = p.cgUpdate;
 		this.cgDirection = p.cgDirection;
 		this.coarse = p.coarse;
+		this.bottom = p.bottom;
+		this.whole = p.whole;
 	}
 
 	int levels() {
@@ -166,6 +175,10 @@ final class PressureSolver implements AutoCloseable {
 		}
 		this.partialCount = ComputeProgram.groups(this.boxCells(0), 256);
 		this.partialSlots = ComputeProgram.launched(this.partialCount);
+		this.bottomLevel = this.levels - 1;
+		while (this.bottomLevel > 0 && this.boxCells(this.bottomLevel - 1) <= WaterSettings.solverBottomCells) {
+			this.bottomLevel--;
+		}
 	}
 
 	private int boxCells(int l) {
@@ -203,6 +216,10 @@ final class PressureSolver implements AutoCloseable {
 	}
 
 	private void vcycle(VkCommandBuffer cb, Desc ubo) {
+		if (WaterSettings.solverBottomCells > 0) {
+			this.vcycleWithBottom(cb, ubo);
+			return;
+		}
 		for (int l = 0; l < this.levels - 1; l++) {
 			this.smooth(cb, ubo, l, 0, l == 0);
 			this.smooth(cb, ubo, l, 1);
@@ -230,6 +247,31 @@ final class PressureSolver implements AutoCloseable {
 		}
 	}
 
+	private void vcycleWithBottom(VkCommandBuffer cb, Desc ubo) {
+		int b = this.bottomLevel;
+		for (int l = 0; l < b; l++) {
+			this.smooth(cb, ubo, l, 0, l == 0);
+			this.smooth(cb, ubo, l, 1);
+			this.restrict.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.levelB(l)), Desc.ssbo(this.levelX(l)),
+				Desc.ssbo(this.mgB), Desc.ssbo(this.mgX));
+			this.restrict.push(cb, this.push(l, l + 1, 0, 0));
+			this.restrict.dispatch(cb, this.boxGroups(l + 1), 1, 1);
+			Vk.barrier(cb);
+		}
+		this.bottom.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.r), Desc.ssbo(this.z), Desc.ssbo(this.mgB), Desc.ssbo(this.mgX));
+		this.bottom.push(cb, b, this.levels, Math.max(1, WaterSettings.mgCoarseSweeps));
+		this.bottom.dispatch(cb, 1, 1, 1);
+		Vk.barrier(cb);
+		for (int l = b - 1; l >= 0; l--) {
+			this.prolong.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.levelX(l)), Desc.ssbo(this.mgX));
+			this.prolong.push(cb, this.push(l, l + 1, 0, 0));
+			this.prolong.dispatch(cb, this.boxGroups(l), 1, 1);
+			Vk.barrier(cb);
+			this.smooth(cb, ubo, l, 1);
+			this.smooth(cb, ubo, l, 0);
+		}
+	}
+
 	private void reduce(VkCommandBuffer cb, Desc ubo, int slot) {
 		this.cgReduce.bind(cb, ubo, Desc.ssbo(this.partials), Desc.ssbo(this.scalars));
 		this.cgReduce.push(cb, this.partialSlots, slot);
@@ -246,6 +288,14 @@ final class PressureSolver implements AutoCloseable {
 
 	void solve(VkCommandBuffer cb, Desc ubo, VkBuf cellFlags, VkBuf b, VkBuf x, int iterations, int[] activeBox) {
 		this.setBox(activeBox);
+		if (this.boxCells(0) <= WaterSettings.solverSmallCells) {
+			this.whole.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.r), Desc.ssbo(this.z), Desc.ssbo(this.mgB), Desc.ssbo(this.mgX),
+				Desc.ssbo(cellFlags), Desc.ssbo(b), Desc.ssbo(x), Desc.ssbo(this.p), Desc.ssbo(this.q));
+			this.whole.push(cb, this.levels, iterations, Math.max(1, WaterSettings.mgCoarseSweeps));
+			this.whole.dispatch(cb, 1, 1, 1);
+			Vk.barrier(cb);
+			return;
+		}
 		int groups = this.partialCount;
 		this.flags0.bind(cb, ubo, Desc.ssbo(cellFlags), Desc.ssbo(this.mgFlags));
 		this.flags0.dispatch(cb, groups, 1, 1);

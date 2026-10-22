@@ -1,7 +1,12 @@
 package me.skaffy.client;
 
 import me.skaffy.ModContent;
+import me.skaffy.client.shader.ShaderPacks;
+import me.skaffy.client.mixin.FogRendererAccessor;
+import me.skaffy.client.water.SlimeFogEnvironment;
 import me.skaffy.client.water.WaterCommands;
+import me.skaffy.client.water.WaterSettings;
+import me.skaffy.client.water.WaterSettingsScreen;
 import me.skaffy.client.water.WaterWorld;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -24,14 +29,20 @@ import net.minecraft.world.level.material.FluidState;
 public class RealisticWaterClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		WaterSettings.load();
 		registerInvisibleFluid();
+		FogRendererAccessor.realisticWater$environments().addFirst(new SlimeFogEnvironment());
 		WaterWorld water = WaterWorld.get();
 		ClientCommandRegistrationCallback.EVENT.register(WaterCommands::register);
 		ClientTickEvents.END_CLIENT_TICK.register(water::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(WaterSettingsScreen::tick);
 		ClientChunkEvents.CHUNK_LOAD.register(water::onChunkLoad);
 		ClientChunkEvents.CHUNK_UNLOAD.register(water::onChunkUnload);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			ShaderPacks.shutdown();
+			water.shutdown();
+		});
 	}
 
 	private static void registerInvisibleFluid() {
@@ -56,5 +67,12 @@ public class RealisticWaterClient implements ClientModInitializer {
 			BlockTintSources.constant(0xFFFFFF)
 		);
 		FluidRenderingRegistry.register(ModContent.REALISTIC_LAVA, ModContent.FLOWING_REALISTIC_LAVA, lavaModel, invisible);
+		FluidModel.Unbaked slimeModel = new FluidModel.Unbaked(
+			new Material(Identifier.withDefaultNamespace("block/water_still")),
+			new Material(Identifier.withDefaultNamespace("block/water_flow")),
+			new Material(Identifier.withDefaultNamespace("block/water_overlay")),
+			BlockTintSources.constant(0x7EDB5C)
+		);
+		FluidRenderingRegistry.register(ModContent.REALISTIC_SLIME, ModContent.FLOWING_REALISTIC_SLIME, slimeModel, invisible);
 	}
 }
