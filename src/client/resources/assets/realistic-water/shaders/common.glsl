@@ -56,6 +56,15 @@ layout(std140, set = 0, binding = 0) uniform Globals {
     vec4 matC;
     vec4 matD;
     vec4 matE;
+    vec4 compat;
+    mat4 shadowNear;
+    mat4 shadowMid;
+    mat4 shadowFar;
+    vec4 compatB;
+    vec4 lightA;
+    vec4 lightB;
+    vec4 lightC;
+    vec4 lightColors[8];
 } G;
 
 bool isSand() {
@@ -64,6 +73,10 @@ bool isSand() {
 
 bool isLava() {
     return abs(G.matA.x - 2.0) < 0.5;
+}
+
+bool isSlime() {
+    return G.matA.x > 2.5;
 }
 
 #define NX G.dims.x
@@ -136,6 +149,12 @@ ivec3 boxDims() {
 
 bool inBox(ivec3 c) {
     return all(greaterThanEqual(c, G.boxMin.xyz)) && all(lessThan(c, G.boxMax.xyz));
+}
+
+int boxIndex(ivec3 c) {
+    ivec3 d = boxDims();
+    ivec3 l = c - G.boxMin.xyz;
+    return l.x + d.x * (l.y + d.y * l.z);
 }
 
 bool inInnerBox(vec3 x) {

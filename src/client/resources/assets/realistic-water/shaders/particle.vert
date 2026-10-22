@@ -2,7 +2,7 @@
 #include "common.glsl"
 layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
 #ifdef DROPLETS
-layout(std430, binding = 2) readonly buffer Dens { float dens[]; };
+layout(std430, binding = 2) readonly buffer Ids { uint ids[]; };
 #endif
 layout(std430, binding = VIEW_BINDING) readonly buffer ViewState { vec4 viewState; };
 layout(push_constant) uniform PC { vec4 a; vec4 b; } pc;
@@ -15,25 +15,10 @@ layout(location = 3) out vec4 vData;
 const vec2 CORNERS[6] = vec2[](vec2(-1, -1), vec2(1, -1), vec2(1, 1), vec2(-1, -1), vec2(1, 1), vec2(-1, 1));
 
 void main() {
-    uint id = uint(gl_InstanceIndex);
-    Particle p = parts[id];
 #ifdef DROPLETS
-    if (p.pos.w < 0.0) {
-        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
-        return;
-    }
-    ivec3 fp = ivec3(floor(p.pos.xyz * float(G.fine.w)));
-    float nearDens = 0.0;
-    for (int k = 0; k < 27; k++) {
-        ivec3 q = fp + ivec3(k % 3, (k / 3) % 3, k / 9) - 1;
-        if (inFine(q)) {
-            nearDens = max(nearDens, dens[fineIndex(q)]);
-        }
-    }
-    if (nearDens > G.surf.w || viewState.x > 0.5) {
-        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
-        return;
-    }
+    Particle p = parts[ids[gl_InstanceIndex]];
+#else
+    Particle p = parts[uint(gl_InstanceIndex)];
 #endif
     vec3 rel = G.domainOrigin.xyz + p.pos.xyz * G.domainOrigin.w;
     vec3 center = (G.view * vec4(rel, 1.0)).xyz;

@@ -1,0 +1,31 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
+layout(std430, binding = 2) readonly buffer Dens { float dens[]; };
+layout(std430, binding = 3) readonly buffer ViewState { vec4 viewState; };
+layout(std430, binding = 4) buffer Args { uint args[]; };
+layout(std430, binding = 5) readonly buffer Counters { uint counters[]; };
+layout(std430, binding = 6) writeonly buffer Ids { uint ids[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+#define ARGS_DROPLET_INSTANCES 25
+
+void main() {
+    uint i = GID_U;
+    if (i >= counters[pc.a.x] || viewState.x > 0.5) {
+        return;
+    }
+    Particle p = parts[i];
+    if (p.pos.w < 0.0) {
+        return;
+    }
+    ivec3 fp = ivec3(floor(p.pos.xyz * float(G.fine.w)));
+    for (int k = 0; k < 27; k++) {
+        ivec3 q = fp + ivec3(k % 3, (k / 3) % 3, k / 9) - 1;
+        if (inFine(q) && dens[fineIndex(q)] > G.surf.w) {
+            return;
+        }
+    }
+    ids[atomicAdd(args[ARGS_DROPLET_INSTANCES], 1u)] = i;
+}

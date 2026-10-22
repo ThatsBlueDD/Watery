@@ -1,0 +1,39 @@
+#version 450
+#include "common.glsl"
+#ifdef MPM
+#include "mpm.glsl"
+#endif
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) buffer Parts { Particle parts[]; };
+layout(std430, binding = 2) readonly buffer Counters { uint counters[]; };
+#ifdef MPM
+layout(std430, binding = 3) buffer State { float state[]; };
+#endif
+layout(push_constant) uniform PC { ivec4 a; vec4 b; vec4 c; } pc;
+
+void main() {
+    uint i = GID_U;
+    if (i >= counters[pc.a.x]) {
+        return;
+    }
+    Particle p = parts[i];
+    if (p.pos.w < 0.0) {
+        return;
+    }
+    vec3 d = p.pos.xyz - pc.b.xyz;
+    float dist = length(d);
+    if (dist >= pc.b.w) {
+        return;
+    }
+    uint seed = hash(i * 747796405u + uint(pc.a.y));
+    vec3 dir = dist > 1e-3 ? d / dist : vec3(0.0, 1.0, 0.0);
+    dir = normalize(dir + randInSphere(seed) * pc.c.z + vec3(0.0, pc.c.y, 0.0));
+    float falloff = 1.0 - dist / pc.b.w;
+    float kick = pc.c.x * falloff * mix(0.7, 1.0, rand(seed));
+    parts[i].vel.xyz = p.vel.xyz + dir * kick;
+#ifdef MPM
+    if (p.pos.w >= 0.5) {
+        state[int(i) * STATE_STRIDE + STATE_REST] = 0.0;
+    }
+#endif
+}

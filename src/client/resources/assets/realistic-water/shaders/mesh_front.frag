@@ -5,7 +5,9 @@ layout(location = 0) in vec3 vView;
 layout(location = 1) in vec3 vNormal;
 layout(location = 2) in float vWall;
 layout(location = 0) out vec4 outG;
-layout(location = 1) out float outMat;
+layout(location = 1) out vec4 outMat;
+#define REGION_LIGHT_BINDING 4
+#include "region_light.glsl"
 
 void main() {
     float dist = -vView.z;
@@ -15,6 +17,9 @@ void main() {
     if (viewState.x > 0.5 && vWall > 0.5) {
         discard;
     }
-    outG = vec4(normalize(vNormal), dist);
-    outMat = G.matA.x;
+    vec3 n = normalize(vNormal);
+    outG = vec4(n, dist);
+    vec3 rel = mat3(G.invView) * vView;
+    vec3 nWorld = mat3(G.invView) * n;
+    outMat = vec4(G.matA.x, regionLightAt(relToSim(rel + nWorld * 0.5)), 0.0);
 }

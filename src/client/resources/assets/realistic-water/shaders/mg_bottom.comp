@@ -1,0 +1,15 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 1024) in;
+layout(std430, binding = 1) coherent buffer MgFlags { uint mgFlags[]; };
+layout(std430, binding = 2) coherent buffer B0 { float b0[]; };
+layout(std430, binding = 3) coherent buffer X0 { float x0[]; };
+layout(std430, binding = 4) coherent buffer MgB { float mgB[]; };
+layout(std430, binding = 5) coherent buffer MgX { float mgX[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+#include "mg_inline.glsl"
+
+void main() {
+    vcycleFrom(pc.a.x, pc.a.y, pc.a.z);
+}

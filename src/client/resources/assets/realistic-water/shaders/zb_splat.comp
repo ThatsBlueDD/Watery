@@ -4,6 +4,7 @@ layout(local_size_x = 256) in;
 layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
 layout(std430, binding = 2) readonly buffer Counters { uint counters[]; };
 layout(std430, binding = 3) buffer Zb { int zb[]; };
+layout(std430, binding = 4) readonly buffer Depth { uint depth[]; };
 layout(push_constant) uniform PC { ivec4 a; vec4 b; } pc;
 
 const float ZB_SCALE = 16384.0;
@@ -15,6 +16,10 @@ void main() {
     }
     Particle p = parts[i];
     if (p.pos.w < 0.0) {
+        return;
+    }
+    ivec3 cell = ivec3(floor(p.pos.xyz));
+    if (pc.a.y > 0 && inBox(cell) && depth[boxIndex(cell)] >= uint(pc.a.y)) {
         return;
     }
     vec3 g = p.pos.xyz * float(G.fine.w);

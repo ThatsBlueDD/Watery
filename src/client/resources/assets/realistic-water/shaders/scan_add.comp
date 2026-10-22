@@ -1,0 +1,14 @@
+#version 450
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) buffer Data { uint data[]; };
+layout(std430, binding = 1) readonly buffer Sums { uint sums[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+#define GID_U (gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x)
+
+void main() {
+    uint i = GID_U;
+    if (i < uint(pc.a.y)) {
+        data[pc.a.x + i] += sums[pc.a.z + i / 1024u];
+    }
+}

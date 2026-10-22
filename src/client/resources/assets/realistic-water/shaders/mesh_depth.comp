@@ -1,0 +1,35 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { uint src[]; };
+layout(std430, binding = 2) writeonly buffer Dst { uint dst[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+uint at(ivec3 c) {
+    if (!inBox(c)) {
+        return 0u;
+    }
+    uint v = src[boxIndex(c)];
+    return pc.a.y != 0 ? (v >= uint(pc.a.w) ? uint(pc.a.z) + 1u : 0u) : v;
+}
+
+void main() {
+    int t = int(GID_U);
+    if (t >= G.boxMin.w) {
+        return;
+    }
+    ivec3 c = boxCell(t);
+    ivec3 e = axisVec(pc.a.x);
+    uint m = at(c);
+    uint depth = 0u;
+    for (int r = 0; r <= pc.a.z; r++) {
+        if (r > 0) {
+            m = min(m, min(at(c + r * e), at(c - r * e)));
+        }
+        if (m < uint(r + 1)) {
+            break;
+        }
+        depth = uint(r + 1);
+    }
+    dst[t] = depth;
+}

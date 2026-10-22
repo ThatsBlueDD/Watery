@@ -17,4 +17,5 @@ void main() {
     args[12] = 6u; args[13] = nf; args[14] = 0u; args[15] = 0u;
     args[16] = 6u; args[17] = nw; args[18] = 0u; args[19] = 0u;
     args[20] = 6u * uint(max(G.matB.z, 1.0)); args[21] = nf; args[22] = 0u; args[23] = 0u;
+    args[24] = 6u; args[25] = 0u; args[26] = 0u; args[27] = 0u;
 }

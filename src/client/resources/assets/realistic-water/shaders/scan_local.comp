@@ -1,0 +1,40 @@
+#version 450
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) buffer Data { uint data[]; };
+layout(std430, binding = 1) writeonly buffer Sums { uint sums[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+shared uint partial[256];
+
+#define GROUP_ID (gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x)
+
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint base = GROUP_ID * 1024u + lid * 4u;
+    uint v[4];
+    uint sum = 0u;
+    for (uint k = 0u; k < 4u; k++) {
+        uint i = base + k;
+        v[k] = i < uint(pc.a.y) ? data[pc.a.x + i] : 0u;
+        sum += v[k];
+    }
+    partial[lid] = sum;
+    barrier();
+    for (uint offset = 1u; offset < 256u; offset <<= 1) {
+        uint add = lid >= offset ? partial[lid - offset] : 0u;
+        barrier();
+        partial[lid] += add;
+        barrier();
+    }
+    uint running = partial[lid] - sum;
+    for (uint k = 0u; k < 4u; k++) {
+        uint i = base + k;
+        if (i < uint(pc.a.y)) {
+            data[pc.a.x + i] = running;
+        }
+        running += v[k];
+    }
+    if (lid == 255u) {
+        sums[pc.a.z + GROUP_ID] = partial[255];
+    }
+}

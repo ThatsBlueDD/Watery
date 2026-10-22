@@ -1,0 +1,56 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) buffer Vel { float vel[]; };
+layout(std430, binding = 2) buffer Scratch { float scratch[]; };
+layout(std430, binding = 3) readonly buffer Flags { uint cellFlags[]; };
+layout(push_constant) uniform PC { ivec4 a; vec4 b; } pc;
+
+const ivec3 NB[6] = ivec3[](ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 1, 0), ivec3(0, -1, 0), ivec3(0, 0, 1), ivec3(0, 0, -1));
+
+uint flagsAt(ivec3 c) {
+    return inBox(c) ? cellFlags[cellIndex(c)] & 0xFFu : CELL_AIR;
+}
+
+int faceKind(int comp, ivec3 f) {
+    uint a = flagsAt(f - axisVec(comp));
+    uint b = flagsAt(f);
+    if (a == CELL_SOLID || b == CELL_SOLID) {
+        return 2;
+    }
+    return a == CELL_FLUID || b == CELL_FLUID ? 1 : 0;
+}
+
+float guess(int j) {
+    return pc.a.x < 0 ? vel[j] : scratch[pc.a.x + j];
+}
+
+void main() {
+    int comp;
+    ivec3 f;
+    if (!boxFace(int(GID_U), comp, f)) {
+        return;
+    }
+    int i = faceIndex(comp, f);
+    float u0 = vel[i];
+    float result = u0;
+    if (faceKind(comp, f) == 1) {
+        float alpha = pc.b.x * DT;
+        float sum = 0.0;
+        float n = 0.0;
+        for (int k = 0; k < 6; k++) {
+            ivec3 nf = f + NB[k];
+            if (!faceInBox(comp, nf) || faceKind(comp, nf) == 0) {
+                continue;
+            }
+            sum += guess(faceIndex(comp, nf));
+            n += 1.0;
+        }
+        result = (u0 + alpha * sum) / (1.0 + alpha * n);
+    }
+    if (pc.a.y < 0) {
+        vel[i] = result;
+    } else {
+        scratch[pc.a.y + i] = result;
+    }
+}

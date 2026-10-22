@@ -1,0 +1,28 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
+layout(std430, binding = 2) buffer Counters { uint counters[]; };
+layout(std430, binding = 3) buffer Cursor { uint cursor[]; };
+layout(std430, binding = 4) writeonly buffer Sorted { Particle sorted[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+void main() {
+    uint i = GID_U;
+    if (i >= counters[pc.a.x]) {
+        return;
+    }
+    Particle p = parts[i];
+    if (p.pos.w < 0.0) {
+        return;
+    }
+    ivec3 c = ivec3(floor(p.pos.xyz));
+    if (inBox(c)) {
+        sorted[atomicAdd(cursor[boxIndex(c)], 1u)] = p;
+    } else if (pc.a.y >= 0) {
+        uint o = atomicAdd(counters[pc.a.y], 1u);
+        if (o < uint(G.caps.x)) {
+            sorted[o] = p;
+        }
+    }
+}

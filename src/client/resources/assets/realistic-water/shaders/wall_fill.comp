@@ -1,0 +1,52 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { float src[]; };
+layout(std430, binding = 2) writeonly buffer Dst { float dst[]; };
+layout(std430, binding = 3) readonly buffer Static { uint staticSolid[]; };
+layout(push_constant) uniform PC { ivec4 a; } pc;
+
+const ivec3 DIRS[6] = ivec3[](ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 1, 0), ivec3(0, -1, 0), ivec3(0, 0, 1), ivec3(0, 0, -1));
+
+bool solidFine(ivec3 p) {
+    ivec3 c = p / G.fine.w;
+    return all(greaterThanEqual(p, ivec3(0))) && inGrid(c) && staticSolid[cellIndex(c)] != 0u;
+}
+
+float load(ivec3 p) {
+    return inFine(p) ? src[fineIndex(p)] : 0.0;
+}
+
+void main() {
+    int t = int(GID_U);
+    if (t >= G.fineBoxMin.w) {
+        return;
+    }
+    ivec3 bd = G.fineBoxMax.xyz - G.fineBoxMin.xyz;
+    ivec3 p = G.fineBoxMin.xyz + ivec3(t % bd.x, (t / bd.x) % bd.y, t / (bd.x * bd.y));
+    int reach = pc.a.x;
+    float v = load(p);
+    if (solidFine(p)) {
+        float best = v;
+        for (int d = 0; d < 6; d++) {
+            for (int k = 1; k <= reach; k++) {
+                ivec3 q = p + DIRS[d] * k;
+                if (!solidFine(q)) {
+                    best = max(best, load(q + DIRS[d] * (reach - 1)));
+                    break;
+                }
+            }
+        }
+        v = best;
+    } else {
+        for (int d = 0; d < 6; d++) {
+            for (int k = 1; k <= reach; k++) {
+                if (solidFine(p - DIRS[d] * k)) {
+                    v = max(v, load(p + DIRS[d] * (reach - k + 1)));
+                    break;
+                }
+            }
+        }
+    }
+    dst[fineIndex(p)] = v;
+}

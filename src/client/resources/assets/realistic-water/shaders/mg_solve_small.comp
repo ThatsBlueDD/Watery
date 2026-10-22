@@ -1,0 +1,157 @@
+#version 450
+#include "common.glsl"
+layout(local_size_x = 1024) in;
+layout(std430, binding = 1) coherent buffer MgFlags { uint mgFlags[]; };
+layout(std430, binding = 2) coherent buffer B0 { float b0[]; };
+layout(std430, binding = 3) coherent buffer X0 { float x0[]; };
+layout(std430, binding = 4) coherent buffer MgB { float mgB[]; };
+layout(std430, binding = 5) coherent buffer MgX { float mgX[]; };
+layout(std430, binding = 6) readonly buffer Flags { uint cellFlags[]; };
+layout(std430, binding = 7) readonly buffer Div { float div[]; };
+layout(std430, binding = 8) coherent buffer Pressure { float pressure[]; };
+layout(std430, binding = 9) coherent buffer P { float p[]; };
+layout(std430, binding = 10) coherent buffer Q { float q[]; };
+layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+
+#include "mg_inline.glsl"
+
+shared float partial[1024];
+
+float total(float v) {
+    uint lid = gl_LocalInvocationID.x;
+    partial[lid] = v;
+    barrier();
+    for (uint s = 512u; s > 0u; s >>= 1) {
+        if (lid < s) {
+            partial[lid] += partial[lid + s];
+        }
+        barrier();
+    }
+    float sum = partial[0];
+    barrier();
+    return sum;
+}
+
+float applyTo(ivec3 c, int i, ivec4 d, bool useP) {
+    float s = 0.0;
+    float n = 0.0;
+    for (int k = 0; k < 6; k++) {
+        ivec3 nb = c + NB[k];
+        if (!inLevel(nb, d, 0)) {
+            n += 1.0;
+            continue;
+        }
+        int j = idx(nb, d);
+        uint t = mgFlags[j];
+        if (t == CELL_SOLID) {
+            continue;
+        }
+        n += 1.0;
+        if (t == CELL_FLUID) {
+            s += useP ? p[j] : pressure[j];
+        }
+    }
+    return n * (useP ? p[i] : pressure[i]) - s;
+}
+
+float dotRZ(ivec4 d, int count) {
+    float v = 0.0;
+    for (int t = int(gl_LocalInvocationID.x); t < count; t += 1024) {
+        int i = idx(boxCellOf(t, d, 0), d);
+        v += b0[i] * x0[i];
+    }
+    return total(v);
+}
+
+float safeRatio(float num, float den) {
+    float r = abs(den) > 1e-30 ? num / den : 0.0;
+    return isnan(r) || isinf(r) ? 0.0 : r;
+}
+
+void main() {
+    int levels = pc.a.x;
+    ivec4 d = levelDims(0);
+    int count = boxCount(d, 0);
+    int lid = int(gl_LocalInvocationID.x);
+
+    for (int t = lid; t < count; t += 1024) {
+        int i = idx(boxCellOf(t, d, 0), d);
+        mgFlags[i] = cellFlags[i] & 0xFFu;
+    }
+    sync();
+    for (int l = 0; l < levels - 1; l++) {
+        ivec4 fd = levelDims(l);
+        ivec4 cd = levelDims(l + 1);
+        int coarseCount = boxCount(cd, l + 1);
+        for (int t = lid; t < coarseCount; t += 1024) {
+            ivec3 C = boxCellOf(t, cd, l + 1);
+            bool anyAir = false;
+            bool anyFluid = false;
+            for (int k = 0; k < 8; k++) {
+                ivec3 f = 2 * C + ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+                if (any(greaterThanEqual(f, fd.xyz))) {
+                    continue;
+                }
+                if (!inLevel(f, fd, l)) {
+                    anyAir = true;
+                    continue;
+                }
+                uint ty = mgFlags[idx(f, fd)];
+                anyAir = anyAir || ty == CELL_AIR;
+                anyFluid = anyFluid || ty == CELL_FLUID;
+            }
+            mgFlags[idx(C, cd)] = anyAir ? CELL_AIR : (anyFluid ? CELL_FLUID : CELL_SOLID);
+        }
+        sync();
+    }
+
+    for (int t = lid; t < count; t += 1024) {
+        ivec3 c = boxCellOf(t, d, 0);
+        int i = idx(c, d);
+        b0[i] = mgFlags[i] == CELL_FLUID ? div[i] - applyTo(c, i, d, false) : 0.0;
+    }
+    sync();
+    vcycleFrom(0, levels, pc.a.z);
+    float rz = dotRZ(d, count);
+    for (int t = lid; t < count; t += 1024) {
+        int i = idx(boxCellOf(t, d, 0), d);
+        p[i] = x0[i];
+    }
+    sync();
+
+    int iterations = max(pc.a.y, 1);
+    for (int k = 0; k < iterations; k++) {
+        float v = 0.0;
+        for (int t = lid; t < count; t += 1024) {
+            ivec3 c = boxCellOf(t, d, 0);
+            int i = idx(c, d);
+            if (mgFlags[i] == CELL_FLUID) {
+                float aq = applyTo(c, i, d, true);
+                q[i] = aq;
+                v += aq * p[i];
+            } else {
+                q[i] = 0.0;
+            }
+        }
+        float alpha = safeRatio(rz, total(v));
+        sync();
+        for (int t = lid; t < count; t += 1024) {
+            int i = idx(boxCellOf(t, d, 0), d);
+            pressure[i] += alpha * p[i];
+            b0[i] -= alpha * q[i];
+        }
+        sync();
+        if (k == iterations - 1) {
+            break;
+        }
+        vcycleFrom(0, levels, pc.a.z);
+        float next = dotRZ(d, count);
+        float beta = safeRatio(next, rz);
+        for (int t = lid; t < count; t += 1024) {
+            int i = idx(boxCellOf(t, d, 0), d);
+            p[i] = x0[i] + beta * p[i];
+        }
+        sync();
+        rz = next;
+    }
+}
