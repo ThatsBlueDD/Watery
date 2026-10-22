@@ -1,0 +1,19 @@
+package skaffy.vista;
+
+import skaffy.shader.*;
+
+public class VistaShader extends Shader {
+    public void onEnable() {
+        name("Vista");
+        icon("icon.png");
+        author("Skaffy");
+        version("1.1");
+        description("Soft shadows, colored light, reflections, puddles, soft clouds and more.");
+        license("Part of Realistic Water mod (see its LICENSE)");
+        link("GitHub", "https://github.com/sskaffy/Realistic-Water");
+        register(Vista.class);
+    }
+
+    public void onDisable() {
+    }
+}
