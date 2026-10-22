@@ -25,5 +25,6 @@ Screenshots:
 
 <img width="1280" height="720" alt="New Project - 2026-10-22T130250 837" src="https://github.com/user-attachments/assets/331818af-9f87-483a-9980-4da6c25f545b" />
 
+#
 
 Credits: https://github.com/claude and https://github.com/eva-akselrad
