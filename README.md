@@ -1,7 +1,8 @@
 # Realistic Water
 A Minecraft mod that adds the realistic water, realistic lava, and realistic sand from Blender animations.
 
-<img width="1280" height="720" alt="New Project - 2026-10-07T160439 375" src="https://github.com/user-attachments/assets/4b14b99f-3358-46a7-9d70-85322b1433c2" />
+<img width="1280" height="720" alt="New Project - 2026-10-22T130136 126" src="https://github.com/user-attachments/assets/cb1baac9-09d7-4165-b434-42a06b2d0de2" />
+
 
 #
 
@@ -20,9 +21,9 @@ How to use:
 
 Screenshots:
 
-<img width="1920" height="1080" alt="Still 2026-10-12 141111_1 7 2" src="https://github.com/user-attachments/assets/86db4ca0-0c4f-4384-91ad-24cdfabd50fd" />
+<img width="1280" height="720" alt="New Project - 2026-10-22T130206 528" src="https://github.com/user-attachments/assets/c7f5a1ec-5565-4819-a13d-79dfe33c0c01" />
 
+<img width="1280" height="720" alt="New Project - 2026-10-22T130250 837" src="https://github.com/user-attachments/assets/331818af-9f87-483a-9980-4da6c25f545b" />
 
-<img width="1280" height="720" alt="New Project - 2026-10-07T163030 494" src="https://github.com/user-attachments/assets/fbba1b63-390b-4d88-aa66-26260c843ef5" />
 
 Credits: https://github.com/claude and https://github.com/eva-akselrad
