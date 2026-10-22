@@ -1,5 +1,5 @@
 # Realistic Water
-A Minecraft mod that adds the realistic waters and sands from Blender animations.
+A Minecraft mod that adds the realistic water, realistic lava, and realistic sand from Blender animations.
 
 <img width="1280" height="720" alt="New Project - 2026-10-07T160439 375" src="https://github.com/user-attachments/assets/4b14b99f-3358-46a7-9d70-85322b1433c2" />
 
@@ -11,9 +11,10 @@ How to use:
 2. Install Fabric (Tutorial: https://docs.fabricmc.net/players/installing-fabric/)
 3. Put the mod to the mods folder
 4. Open the game and set the Graphics API in the Video Settings to Vulkan and then restart the game
-5. Place down a ball of water with "/water ball"
-6. Or go in your Creative inventory and get a "Realistic Water Bucket" or "Realistic Lava Bucket"
-7. Spawn lava with "/water lava" or "/water ball lava [size]"; remove with "/water remove lava"
+5. Place down a ball of water with "/water ball" or lava with "/water lava"
+6. Or go in your Creative inventory and get a "Realistic Water Bucket", "Realistic Lava Bucket", or "Realistic Sand"
+7. Remove water: lava, or sand with "/water remove", "/water remove lava", "/water remove sand"
+8. Use shaders: Video Settings -> Shader Packs, they work best on Vulkan 
 
 #
 
@@ -24,4 +25,4 @@ Screenshots:
 
 <img width="1280" height="720" alt="New Project - 2026-10-07T163030 494" src="https://github.com/user-attachments/assets/fbba1b63-390b-4d88-aa66-26260c843ef5" />
 
-IMPORTANT:The mod is coded by Claude but it is looked through by me and the idea for how things work is on me too
+Credits: https://github.com/claude and https://github.com/eva-akselrad
