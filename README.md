@@ -15,7 +15,8 @@ How to use:
 5. Place down a ball of water with "/water ball" or lava with "/water lava"
 6. Or go in your Creative inventory and get a "Realistic Water Bucket", "Realistic Lava Bucket", or "Realistic Sand"
 7. Remove water: lava, or sand with "/water remove", "/water remove lava", "/water remove sand"
-8. Use shaders: Video Settings -> Shader Packs, they work best on Vulkan 
+8. Edit settings about the realistic stuff in a GUI you can open with "/water gui"
+9. Use shaders: Video Settings -> Shader Packs, they work best on Vulkan 
 
 #
 
