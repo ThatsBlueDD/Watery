@@ -10,7 +10,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		register("realistic-water") {
+		register("watery") {
 			sourceSet(sourceSets.main.get())
 			sourceSet(sourceSets.getByName("client"))
 		}

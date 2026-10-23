@@ -223,7 +223,7 @@ public final class WaterSettings {
 	}
 
 	private static Path file() {
-		return FabricLoader.getInstance().getConfigDir().resolve("realistic-water.properties");
+		return FabricLoader.getInstance().getConfigDir().resolve("watery.properties");
 	}
 
 	public static void load() {

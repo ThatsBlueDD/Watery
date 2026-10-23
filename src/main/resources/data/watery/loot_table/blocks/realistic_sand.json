@@ -4,7 +4,7 @@
     {
       "condition": {
         "type": "minecraft:match_block",
-        "blocks": "realistic-water:realistic_sand",
+        "blocks": "watery:realistic_sand",
         "state": {
           "layers": "8"
         }
@@ -12,11 +12,11 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "realistic-water:realistic_sand"
+          "name": "watery:realistic_sand"
         }
       ],
       "rolls": 1
     }
   ],
-  "random_sequence": "realistic-water:blocks/realistic_sand"
+  "random_sequence": "watery:blocks/realistic_sand"
 }

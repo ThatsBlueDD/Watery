@@ -13,4 +13,4 @@ pluginManagement {
 	}
 }
 
-rootProject.name = "realistic-water"
+rootProject.name = "watery"

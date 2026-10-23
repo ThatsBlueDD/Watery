@@ -420,10 +420,10 @@ public final class ClipRecorder {
 			pb.redirectErrorStream(true);
 			this.process = pb.start();
 			this.out = this.process.getOutputStream();
-			Thread log = new Thread(this::drainOutput, "realistic-water-ffmpeg-log");
+			Thread log = new Thread(this::drainOutput, "watery-ffmpeg-log");
 			log.setDaemon(true);
 			log.start();
-			this.writer = new Thread(this::pump, "realistic-water-ffmpeg-writer");
+			this.writer = new Thread(this::pump, "watery-ffmpeg-writer");
 			this.writer.setDaemon(true);
 			this.writer.start();
 		}
@@ -497,7 +497,7 @@ public final class ClipRecorder {
 			this.width = width;
 			this.height = height;
 			this.fps = fps;
-			this.writer = new Thread(this::pump, "realistic-water-png-writer");
+			this.writer = new Thread(this::pump, "watery-png-writer");
 			this.writer.setDaemon(true);
 			this.writer.start();
 		}

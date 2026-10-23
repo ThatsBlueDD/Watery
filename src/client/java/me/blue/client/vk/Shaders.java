@@ -15,7 +15,7 @@ import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo;
 
 public final class Shaders {
-	private static final String ROOT = "/assets/realistic-water/shaders/";
+	private static final String ROOT = "/assets/watery/shaders/";
 	public static final int VERTEX = Shaderc.shaderc_vertex_shader;
 	public static final int FRAGMENT = Shaderc.shaderc_fragment_shader;
 	public static final int COMPUTE = Shaderc.shaderc_compute_shader;

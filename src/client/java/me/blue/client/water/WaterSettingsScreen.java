@@ -29,7 +29,7 @@ public class WaterSettingsScreen extends OptionsSubScreen {
 	private final String category;
 
 	public WaterSettingsScreen(@Nullable Screen lastScreen, String category) {
-		super(lastScreen, Minecraft.getInstance().options, Component.translatable("realistic-water.settings.title"));
+		super(lastScreen, Minecraft.getInstance().options, Component.translatable("watery.settings.title"));
 		List<String> categories = WaterSettingsInfo.categories();
 		this.category = categories.contains(category) ? category : categories.getFirst();
 		lastCategory = this.category;
@@ -50,8 +50,8 @@ public class WaterSettingsScreen extends OptionsSubScreen {
 	protected void addOptions() {
 		CycleButton<String> categoryButton = CycleButton.builder(Component::literal, this.category)
 			.withValues(WaterSettingsInfo.categories())
-			.create(Component.translatable("realistic-water.settings.category"), (button, value) -> this.minecraft.gui.setScreen(new WaterSettingsScreen(this.lastScreen, value)));
-		categoryButton.setTooltip(Tooltip.create(Component.translatable("realistic-water.settings.hint")));
+			.create(Component.translatable("watery.settings.category"), (button, value) -> this.minecraft.gui.setScreen(new WaterSettingsScreen(this.lastScreen, value)));
+		categoryButton.setTooltip(Tooltip.create(Component.translatable("watery.settings.hint")));
 		this.list.addBig(categoryButton);
 		List<AbstractWidget> widgets = new ArrayList<>();
 		for (String name : WaterSettingsInfo.names(this.category)) {
@@ -69,7 +69,7 @@ public class WaterSettingsScreen extends OptionsSubScreen {
 	@Override
 	protected void addFooter() {
 		LinearLayout buttons = this.layout.addToFooter(LinearLayout.horizontal().spacing(8));
-		Button reset = Button.builder(Component.translatable("realistic-water.settings.resetCategory"), button -> {
+		Button reset = Button.builder(Component.translatable("watery.settings.resetCategory"), button -> {
 			for (String name : WaterSettingsInfo.names(this.category)) {
 				try {
 					WaterSettings.reset(name);
@@ -79,7 +79,7 @@ public class WaterSettingsScreen extends OptionsSubScreen {
 			}
 			this.minecraft.gui.setScreen(new WaterSettingsScreen(this.lastScreen, this.category));
 		}).build();
-		reset.setTooltip(Tooltip.create(Component.translatable("realistic-water.settings.resetCategory.tooltip")));
+		reset.setTooltip(Tooltip.create(Component.translatable("watery.settings.resetCategory.tooltip")));
 		buttons.addChild(reset);
 		buttons.addChild(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose()).build());
 	}

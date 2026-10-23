@@ -22,20 +22,20 @@ import org.jspecify.annotations.Nullable;
 final class Shapes {
 	private static final Matrix3x2f IDENTITY = new Matrix3x2f();
 	private static final RenderPipeline GUI = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GUI_SNIPPET)
-			.withLocation(Identifier.fromNamespaceAndPath("realistic-water", "pipeline/gui_shapes"))
+			.withLocation(Identifier.fromNamespaceAndPath("watery", "pipeline/gui_shapes"))
 			.withCull(false)
 			.build());
 	private static final RenderPipeline GUI_TEXTURED = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
-			.withLocation(Identifier.fromNamespaceAndPath("realistic-water", "pipeline/gui_shapes_textured"))
+			.withLocation(Identifier.fromNamespaceAndPath("watery", "pipeline/gui_shapes_textured"))
 			.withCull(false)
 			.build());
 	private static final RenderPipeline GUI_INVERT = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GUI_SNIPPET)
-			.withLocation(Identifier.fromNamespaceAndPath("realistic-water", "pipeline/gui_shapes_invert"))
+			.withLocation(Identifier.fromNamespaceAndPath("watery", "pipeline/gui_shapes_invert"))
 			.withColorTargetState(new ColorTargetState(BlendFunction.INVERT))
 			.withCull(false)
 			.build());
 	private static final RenderPipeline GUI_TEXTURED_INVERT = RenderPipelines.register(RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
-			.withLocation(Identifier.fromNamespaceAndPath("realistic-water", "pipeline/gui_shapes_textured_invert"))
+			.withLocation(Identifier.fromNamespaceAndPath("watery", "pipeline/gui_shapes_textured_invert"))
 			.withColorTargetState(new ColorTargetState(BlendFunction.INVERT))
 			.withCull(false)
 			.build());

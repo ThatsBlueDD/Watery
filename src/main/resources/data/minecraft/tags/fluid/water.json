@@ -1,7 +1,7 @@
 {
   "replace": false,
   "values": [
-    "realistic-water:realistic_water",
-    "realistic-water:flowing_realistic_water"
+    "watery:realistic_water",
+    "watery:flowing_realistic_water"
   ]
 }

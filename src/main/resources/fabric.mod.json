@@ -1,8 +1,8 @@
 {
 	"schemaVersion": 1,
-	"id": "realistic-water",
+	"id": "watery",
 	"version": "${version}",
-	"name": "Realistic Water",
+	"name": "Watery",
 	"description": "Ultra realistic stuff from Blender Minecraft renders!",
 	"authors": [
 		"ItsBlueDD"
@@ -10,7 +10,7 @@
 	"contact": {
 	},
 	"license": "GPL-3.0-only",
-	"icon": "assets/realistic-water/icon.png",
+	"icon": "assets/watery/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
@@ -21,9 +21,9 @@
 		]
 	},
 	"mixins": [
-		"realistic-water.mixins.json",
+		"watery.mixins.json",
 		{
-			"config": "realistic-water.client.mixins.json",
+			"config": "watery.client.mixins.json",
 			"environment": "client"
 		}
 	],
