@@ -5,19 +5,19 @@
 	"name": "Realistic Water",
 	"description": "Ultra realistic stuff from Blender Minecraft renders!",
 	"authors": [
-		"Skaffy"
+		"ItsBlueDD"
 	],
 	"contact": {
 	},
-	"license": "Custom License",
+	"license": "GPL-3.0-only",
 	"icon": "assets/realistic-water/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"me.skaffy.RealisticWater"
+			"me.blue.RealisticWater"
 		],
 		"client": [
-			"me.skaffy.client.RealisticWaterClient"
+			"me.blue.client.RealisticWaterClient"
 		]
 	},
 	"mixins": [

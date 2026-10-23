@@ -1,0 +1,19 @@
+package blue.vista;
+
+import blue.shader.*;
+
+public class VistaShader extends Shader {
+    public void onEnable() {
+        name("Vista");
+        icon("icon.png");
+        author("Blue");
+        version("1.1");
+        description("Soft shadows, colored light, reflections, puddles, soft clouds and more.");
+        license("Part of Realistic Water mod (see its LICENSE)");
+        link("GitHub", "https://github.com/sblue/Realistic-Water");
+        register(Vista.class);
+    }
+
+    public void onDisable() {
+    }
+}

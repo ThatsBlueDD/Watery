@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "me.skaffy.mixin",
+	"package": "me.blue.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
 		"PistonBaseBlockMixin",
