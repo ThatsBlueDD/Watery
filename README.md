@@ -1,4 +1,4 @@
-# Realistic Water
+# Realistic Water - Watery
 A Minecraft mod that adds the realistic water, realistic lava, and realistic sand from Blender animations.
 **DISCLAIMER: REQUIRES VULKAN, THOSE THAT DO NOT SUPPORT VULKAN CANNOT USE THIS**
 
